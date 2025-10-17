@@ -1,8 +1,9 @@
+const chalk = require('chalk');
+
 const logger = {
-  info: (message) => console.log(`[INFO] ${new Date().toISOString()} - ${message}`),
-  success: (message) => console.log(`[SUCCESS] ${new Date().toISOString()} - ${message}`),
-  error: (message) => console.error(`[ERR] ${new Date().toISOString()} - ${message}`),
-  warn: (message) => console.warn(`[WARN] ${new Date().toISOString()} - ${message}`),
+  info: (msg) => console.log(chalk.blue(msg)),
+  success: (msg) => console.log(chalk.green(msg)),
+  error: (msg) => console.log(chalk.red(msg)),
 };
 
 module.exports = logger;

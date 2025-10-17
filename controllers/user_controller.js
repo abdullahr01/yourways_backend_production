@@ -3,47 +3,33 @@ const { successResponse, errorResponse } = require('../utils/responseHandler');
 const logger = require('../utils/logger');
 
 class UserController {
-  async registerUser(req, res) {
+  async register(req, res) {
     try {
-      logger.info('User registration request received');
-      const user = await UserService.createUser(req.body);
+      logger.info('[INFO] User registration request received');
+      const user = await UserService.registerUser(req.body);
       successResponse(res, 201, 'User registered successfully', user);
-    } catch (error) {
-      logger.error(`User registration error: ${error.message}`);
-      errorResponse(res, 400, 'User registration failed', error);
+    } catch (err) {
+      errorResponse(res, 400, 'User registration failed', err);
     }
   }
 
-  async getUser(req, res) {
+  async login(req, res) {
     try {
-      logger.info(`Fetching user with ID: ${req.params.id}`);
-      const user = await UserService.getUserById(req.params.id);
-      successResponse(res, 200, 'User fetched successfully', user);
-    } catch (error) {
-      logger.error(`Error fetching user: ${error.message}`);
-      errorResponse(res, 404, 'User not found', error);
+      const { phone } = req.body;
+      logger.info(`[INFO] User login attempt: ${phone}`);
+      const user = await UserService.loginUser(phone);
+      successResponse(res, 200, 'Login successful', user);
+    } catch (err) {
+      errorResponse(res, 400, 'User login failed', err);
     }
   }
 
-  async getAllUsers(req, res) {
+  async getAll(req, res) {
     try {
-      logger.info('Fetching all users');
-      const users = await UserService.getAllUsers();
+      const users = await UserService.getAll();
       successResponse(res, 200, 'Users fetched successfully', users);
-    } catch (error) {
-      logger.error(`Error fetching users: ${error.message}`);
-      errorResponse(res, 500, 'Failed to fetch users', error);
-    }
-  }
-
-  async updateUser(req, res) {
-    try {
-      logger.info(`Updating user with ID: ${req.params.id}`);
-      const user = await UserService.updateUser(req.params.id, req.body);
-      successResponse(res, 200, 'User updated successfully', user);
-    } catch (error) {
-      logger.error(`Error updating user: ${error.message}`);
-      errorResponse(res, 400, 'User update failed', error);
+    } catch (err) {
+      errorResponse(res, 500, 'Failed to fetch users', err);
     }
   }
 }

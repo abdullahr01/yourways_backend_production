@@ -1,19 +1,15 @@
-const successResponse = (res, statusCode, message, data = null) => {
-  res.status(statusCode).json({
+exports.successResponse = (res, code, message, data = null) => {
+  return res.status(code).json({
     success: true,
     message,
     data,
-    timestamp: new Date().toISOString(),
   });
 };
 
-const errorResponse = (res, statusCode, message, error = null) => {
-  res.status(statusCode).json({
+exports.errorResponse = (res, code, message, error = null) => {
+  return res.status(code).json({
     success: false,
     message,
-    error: error ? error.message : null,
-    timestamp: new Date().toISOString(),
+    error: error?.message || error,
   });
 };
-
-module.exports = { successResponse, errorResponse };

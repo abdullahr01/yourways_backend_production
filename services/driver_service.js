@@ -2,58 +2,66 @@ const Driver = require('../models/driver_model');
 const logger = require('../utils/logger');
 
 class DriverService {
-  async createDriver(driverData) {
+  async registerDriver(data) {
     try {
-      const existingDriver = await Driver.findOne({ email: driverData.email });
-      if (existingDriver) {
-        throw new Error('Driver with this email already exists');
-      }
+      logger.info('[INFO] Checking for existing driver...');
+      const existing = await Driver.findOne({ phone: data.phone });
+      if (existing) throw new Error('Driver already exists.');
 
-      const driver = new Driver(driverData);
+      const driver = new Driver(data);
       await driver.save();
-      logger.success(`Driver created with ID: ${driver._id}`);
+
+      logger.success(`[SUCCESS] Driver registered (pending approval) ID: ${driver._id}`);
       return driver;
-    } catch (error) {
-      logger.error(`Error creating driver: ${error.message}`);
-      throw error;
+    } catch (err) {
+      logger.error(`[ERROR] Register Driver: ${err.message}`);
+      throw err;
     }
   }
 
-  async getDriverById(driverId) {
+  async loginDriver(phone) {
     try {
-      const driver = await Driver.findById(driverId);
-      if (!driver) {
-        throw new Error('Driver not found');
+      logger.info(`[INFO] Logging in driver: ${phone}`);
+      const driver = await Driver.findOne({ phone });
+      if (!driver) throw new Error('Driver not found');
+
+      if (!driver.isApprovedByAdmin) {
+        logger.info('[INFO] Driver not yet approved by admin');
+        return { requiresAdminApproval: true };
       }
+
+      logger.success(`[SUCCESS] Driver login successful: ${phone}`);
       return driver;
-    } catch (error) {
-      logger.error(`Error fetching driver: ${error.message}`);
-      throw error;
+    } catch (err) {
+      logger.error(`[ERROR] Login Driver: ${err.message}`);
+      throw err;
     }
   }
 
-  async getAvailableDrivers() {
+  async approveDriver(driverId) {
     try {
-      const drivers = await Driver.find({ status: 'available' });
-      logger.info(`Fetched ${drivers.length} available drivers`);
+      const driver = await Driver.findByIdAndUpdate(
+        driverId,
+        { isApprovedByAdmin: true },
+        { new: true }
+      );
+      if (!driver) throw new Error('Driver not found');
+      logger.success(`[SUCCESS] Driver approved: ${driverId}`);
+      return driver;
+    } catch (err) {
+      logger.error(`[ERROR] Approve Driver: ${err.message}`);
+      throw err;
+    }
+  }
+
+  async getAll() {
+    try {
+      const drivers = await Driver.find({});
+      logger.info(`[INFO] Fetched ${drivers.length} drivers`);
       return drivers;
-    } catch (error) {
-      logger.error(`Error fetching available drivers: ${error.message}`);
-      throw error;
-    }
-  }
-
-  async updateDriver(driverId, updateData) {
-    try {
-      const driver = await Driver.findByIdAndUpdate(driverId, updateData, { new: true });
-      if (!driver) {
-        throw new Error('Driver not found');
-      }
-      logger.success(`Driver updated: ${driverId}`);
-      return driver;
-    } catch (error) {
-      logger.error(`Error updating driver: ${error.message}`);
-      throw error;
+    } catch (err) {
+      logger.error(`[ERROR] Fetch Drivers: ${err.message}`);
+      throw err;
     }
   }
 }

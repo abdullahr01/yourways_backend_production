@@ -2,58 +2,44 @@ const User = require('../models/user_model');
 const logger = require('../utils/logger');
 
 class UserService {
-  async createUser(userData) {
+  async registerUser(data) {
     try {
-      const existingUser = await User.findOne({ email: userData.email });
-      if (existingUser) {
-        throw new Error('User with this email already exists');
-      }
+      logger.info('[INFO] Checking for existing user...');
+      const existing = await User.findOne({ phone: data.phone });
+      if (existing) throw new Error('User already registered.');
 
-      const user = new User(userData);
+      const user = new User(data);
       await user.save();
-      logger.success(`User created with ID: ${user._id}`);
+
+      logger.success(`[SUCCESS] User registered with ID: ${user._id}`);
       return user;
-    } catch (error) {
-      logger.error(`Error creating user: ${error.message}`);
-      throw error;
+    } catch (err) {
+      logger.error(`[ERROR] Register User: ${err.message}`);
+      throw err;
     }
   }
 
-  async getUserById(userId) {
+  async loginUser(phone) {
     try {
-      const user = await User.findById(userId);
-      if (!user) {
-        throw new Error('User not found');
-      }
+      logger.info(`[INFO] Logging in user: ${phone}`);
+      const user = await User.findOne({ phone });
+      if (!user) throw new Error('User not found');
+      logger.success(`[SUCCESS] User login successful: ${phone}`);
       return user;
-    } catch (error) {
-      logger.error(`Error fetching user: ${error.message}`);
-      throw error;
+    } catch (err) {
+      logger.error(`[ERROR] Login User: ${err.message}`);
+      throw err;
     }
   }
 
-  async getAllUsers() {
+  async getAll() {
     try {
       const users = await User.find({});
-      logger.info(`Fetched ${users.length} users`);
+      logger.info(`[INFO] Fetched ${users.length} users`);
       return users;
-    } catch (error) {
-      logger.error(`Error fetching users: ${error.message}`);
-      throw error;
-    }
-  }
-
-  async updateUser(userId, updateData) {
-    try {
-      const user = await User.findByIdAndUpdate(userId, updateData, { new: true });
-      if (!user) {
-        throw new Error('User not found');
-      }
-      logger.success(`User updated: ${userId}`);
-      return user;
-    } catch (error) {
-      logger.error(`Error updating user: ${error.message}`);
-      throw error;
+    } catch (err) {
+      logger.error(`[ERROR] Fetch Users: ${err.message}`);
+      throw err;
     }
   }
 }

@@ -3,47 +3,48 @@ const { successResponse, errorResponse } = require('../utils/responseHandler');
 const logger = require('../utils/logger');
 
 class DriverController {
-  async registerDriver(req, res) {
+  async register(req, res) {
     try {
-      logger.info('Driver registration request received');
-      const driver = await DriverService.createDriver(req.body);
-      successResponse(res, 201, 'Driver registered successfully', driver);
-    } catch (error) {
-      logger.error(`Driver registration error: ${error.message}`);
-      errorResponse(res, 400, 'Driver registration failed', error);
+      logger.info('[INFO] Driver registration request received');
+      const driver = await DriverService.registerDriver(req.body);
+      successResponse(res, 201, 'Driver registered successfully (pending approval)', driver);
+    } catch (err) {
+      errorResponse(res, 400, 'Driver registration failed', err);
     }
   }
 
-  async getDriver(req, res) {
+  async login(req, res) {
     try {
-      logger.info(`Fetching driver with ID: ${req.params.id}`);
-      const driver = await DriverService.getDriverById(req.params.id);
-      successResponse(res, 200, 'Driver fetched successfully', driver);
-    } catch (error) {
-      logger.error(`Error fetching driver: ${error.message}`);
-      errorResponse(res, 404, 'Driver not found', error);
+      const { phone } = req.body;
+      logger.info(`[INFO] Driver login attempt: ${phone}`);
+      const result = await DriverService.loginDriver(phone);
+
+      if (result.requiresAdminApproval) {
+        return errorResponse(res, 403, 'Contact admin for driver approval');
+      }
+
+      successResponse(res, 200, 'Driver login successful', result);
+    } catch (err) {
+      errorResponse(res, 400, 'Driver login failed', err);
     }
   }
 
-  async getAvailableDrivers(req, res) {
+  async approve(req, res) {
     try {
-      logger.info('Fetching available drivers');
-      const drivers = await DriverService.getAvailableDrivers();
-      successResponse(res, 200, 'Available drivers fetched successfully', drivers);
-    } catch (error) {
-      logger.error(`Error fetching available drivers: ${error.message}`);
-      errorResponse(res, 500, 'Failed to fetch drivers', error);
+      logger.info(`[INFO] Approving driver ID: ${req.params.id}`);
+      const driver = await DriverService.approveDriver(req.params.id);
+      successResponse(res, 200, 'Driver approved successfully', driver);
+    } catch (err) {
+      errorResponse(res, 400, 'Driver approval failed', err);
     }
   }
 
-  async updateDriver(req, res) {
+  async getAll(req, res) {
     try {
-      logger.info(`Updating driver with ID: ${req.params.id}`);
-      const driver = await DriverService.updateDriver(req.params.id, req.body);
-      successResponse(res, 200, 'Driver updated successfully', driver);
-    } catch (error) {
-      logger.error(`Error updating driver: ${error.message}`);
-      errorResponse(res, 400, 'Driver update failed', error);
+      const drivers = await DriverService.getAll();
+      successResponse(res, 200, 'Drivers fetched successfully', drivers);
+    } catch (err) {
+      errorResponse(res, 500, 'Failed to fetch drivers', err);
     }
   }
 }

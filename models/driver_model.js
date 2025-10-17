@@ -2,49 +2,24 @@ const mongoose = require('mongoose');
 
 const driverSchema = new mongoose.Schema(
   {
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    name: { type: String, required: true, trim: true },
     email: {
       type: String,
       required: true,
       unique: true,
       lowercase: true,
+      match: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
     },
-    phone: {
-      type: String,
-      required: true,
-    },
-    password: {
-      type: String,
-      required: true,
-      minlength: 6,
-    },
-    licenseNumber: {
-      type: String,
-      required: true,
-      unique: true,
-    },
-    vehicleType: {
-      type: String,
-      enum: ['van', 'truck', 'lorry', 'bike'],
-      default: 'van',
-    },
-    vehicleNumber: {
-      type: String,
-    },
+    phone: { type: String, required: true, unique: true },
+    address: { type: String },
+    dob: { type: Date },
+    licenseNumber: { type: String },
+    vehicleType: { type: String },
+    isApprovedByAdmin: { type: Boolean, default: false },
     status: {
       type: String,
-      enum: ['available', 'busy', 'offline'],
-      default: 'available',
-    },
-    rating: {
-      type: Number,
-      default: 0,
-      min: 0,
-      max: 5,
+      enum: ['active', 'inactive'],
+      default: 'active',
     },
   },
   { timestamps: true }
