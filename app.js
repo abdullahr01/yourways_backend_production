@@ -6,8 +6,7 @@ const logger = require('./utils/logger');
 
 const userRoutes = require('./routes/user_router');
 const driverRoutes = require('./routes/driver_router');
-const requestRoutes = require('./routes/request_router');
-const categoryRoutes = require('./routes/category_router');
+const orderRoutes = require('./routes/order_router');
 
 const app = express();
 
@@ -26,11 +25,10 @@ app.get('/', (req, res) => {
 
 app.use('/api/users', userRoutes);
 app.use('/api/drivers', driverRoutes);
-app.use('/api/requests', requestRoutes);
-app.use('/api/categories', categoryRoutes);
+app.use('/api/order', orderRoutes);
 
 app.use((req, res) => {
-  logger.warn(`Route not found: ${req.method} ${req.path}`);
+  logger.error(`Route not found: ${req.method} ${req.path}`);
   res.status(404).json({ message: 'Route not found', success: false });
 });
 
