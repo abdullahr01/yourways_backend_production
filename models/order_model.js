@@ -1,90 +1,135 @@
+// models/order_model.js
 const mongoose = require('mongoose');
 
-const itemSchema = new mongoose.Schema({
-  name: { type: String, required: true },   // e.g., "Bed"
-  quantity: { type: Number, default: 1 },
-  dimensions: {
-    width: Number,
-    height: Number,
-    depth: Number,
-    unit: { type: String, default: 'cm' }
-  },
-  fragile: { type: Boolean, default: false },
-  notes: String
-});
-
-const addressSchema = new mongoose.Schema({
-  address: String,
-  city: String,
-  postalCode: String,
-  coordinates: {
-    lat: Number,
-    lng: Number
-  }
-});
+const orderItemSchema = new mongoose.Schema({
+  category: { type: String, required: true },
+  itemName: { type: String, required: true },
+  quantity: { type: Number, required: true, min: 1 },
+  modifiers: { type: Map, of: mongoose.Schema.Types.Mixed, default: {} }
+}, { _id: false });
 
 const orderSchema = new mongoose.Schema(
   {
-    requestCode: { type: String, unique: true, index: true },
+    orderId: { type: String, unique: true, index: true },
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-
-    // driver may be assigned later
-    driverId: { type: mongoose.Schema.Types.ObjectId, ref: 'Driver' },
-
-    // since frontend handles categories, store the category name
-    category: { type: String, required: true }, // e.g. "Home Removals"
-    subcategory: { type: String },              // e.g. "Sofa"
-
-    // items moved
-    items: [itemSchema],
-
-    pickupLocation: addressSchema,
-    dropLocation: addressSchema,
-
-    pickupDateTime: { type: Date },
-    deliveryDateTime: { type: Date },
-
-    pickupFloor: { type: Number, default: 0 },
-    dropFloor: { type: Number, default: 0 },
-    pickupLiftAvailable: { type: Boolean, default: false },
-    dropLiftAvailable: { type: Boolean, default: false },
-
-    addonItems: [
-      {
-        name: String,
-        quantity: { type: Number, default: 1 },
-        price: Number
-      }
-    ],
-
-    specialInstructions: { type: String },
-
-    estimatedPrice: { type: Number },
-
+    bookingId: { type: mongoose.Schema.Types.ObjectId, ref: 'Booking' },
+    
+    serviceName: { type: String, required: true },
+    
+    // Status Management
     status: {
       type: String,
-      enum: ['pending', 'assigned', 'in-progress', 'completed', 'cancelled'],
+      enum: [
+        'pending',
+        'pickupScheduled',
+        'outForPickup',
+        'itemsCollected',
+        'pickupCompleted',
+        'outForDropOff',
+        'completed',
+        'cancelled'
+      ],
       default: 'pending'
     },
 
+    // Locations
+    pickupLocation: { type: String, required: true },
+    deliveryLocation: { type: String, required: true },
+
+    // Date & Time
+    pickupDateTime: { type: Date },
+    deliveryDateTime: { type: Date },
+    pickupCompletedAt: { type: Date },
+    deliveryCompletedAt: { type: Date },
+    completedAt: { type: Date },
+
+    // Property Details
+    pickupPropertyType: { type: String, required: true },
+    deliveryPropertyType: { type: String, required: true },
+    pickupFloorLevel: { type: String, required: true },
+    deliveryFloorLevel: { type: String, required: true },
+    pickupLiftAccess: { type: Boolean, required: true },
+    deliveryLiftAccess: { type: Boolean, required: true },
+
+    // Service Details
+    manpowerRequired: { type: String, required: true },
+    packingService: { type: String, required: true },
+    dismantlingRequired: { type: Boolean, required: true },
+    parkingAccess: { type: String, required: true },
+    insuranceValue: { type: Number, required: true, default: 0 },
+    jobNotes: { type: String, default: '' },
+
+    // Contact
+    customerName: { type: String, required: true },
+    customerEmail: { type: String, required: true },
+    customerPhone: { type: String, required: true },
+
+    // Items
+    items: [orderItemSchema],
+
+    // Additional items collected by driver
+    additionalItems: [orderItemSchema],
+
+    // Photos
+    pickupPhotos: [{ type: String }],
+    deliveryPhotos: [{ type: String }],
+
+    // Driver comments
+    driverComment: { type: String },
+
+    // Driver Assignment - FIXED: Now references Driver model
+    driver: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      ref: 'Driver',
+      default: null
+    },
+
+    // Pricing
+    totalPrice: { type: Number, required: true, default: 0 },
+    quotedPrice: { type: Number },
+
+    // Cancellation
+    cancellationReason: { type: String },
+
+    // Metadata
     meta: {
       ip: String,
       userAgent: String
     }
   },
-  { timestamps: true }
+  { 
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
+  }
 );
 
-// generate requestCode before save if not provided
-orderSchema.pre('save', async function (next) {
-  if (!this.requestCode) {
-    // nice readable unique code: ORD-YYYYMMDD-HHMMSS-XXXX
+// Virtual for total items count
+orderSchema.virtual('totalItems').get(function() {
+  return this.items.reduce((sum, item) => sum + item.quantity, 0);
+});
+
+// Virtual to check if order is active
+orderSchema.virtual('isActive').get(function() {
+  return this.status !== 'completed' && this.status !== 'cancelled';
+});
+
+// Generate orderId before save
+orderSchema.pre('save', async function(next) {
+  if (!this.orderId) {
     const d = new Date();
     const pad = (n) => String(n).padStart(2, '0');
-    const dt = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-    this.requestCode = `ORD-${dt}-${Math.floor(Math.random() * 9000) + 1000}`;
+    const dateStr = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+    const timeStr = `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+    const random = Math.floor(Math.random() * 9000) + 1000;
+    this.orderId = `ORD-${dateStr}-${timeStr}-${random}`;
   }
   next();
 });
+
+// Index for faster queries
+orderSchema.index({ userId: 1, status: 1, createdAt: -1 });
+orderSchema.index({ driver: 1, status: 1 });
+orderSchema.index({ orderId: 1 });
 
 module.exports = mongoose.model('Order', orderSchema);

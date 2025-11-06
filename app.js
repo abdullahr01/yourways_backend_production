@@ -7,6 +7,7 @@ const logger = require('./utils/logger');
 const userRoutes = require('./routes/user_router');
 const driverRoutes = require('./routes/driver_router');
 const orderRoutes = require('./routes/order_router');
+const bookingRoutes = require('./routes/booking_router');
 
 const app = express();
 
@@ -25,7 +26,8 @@ app.get('/', (req, res) => {
 
 app.use('/api/users', userRoutes);
 app.use('/api/drivers', driverRoutes);
-app.use('/api/order', orderRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/bookings', bookingRoutes);
 
 app.use((req, res) => {
   logger.error(`Route not found: ${req.method} ${req.path}`);
