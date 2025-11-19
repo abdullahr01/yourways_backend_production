@@ -11,7 +11,22 @@ const bookingRoutes = require('./routes/booking_router');
 
 const app = express();
 
-app.use(cors());
+const allowedOrigins = [
+    'http://localhost:65018',
+    'http://localhost:5000'
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+        if(!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(morgan('combined'));

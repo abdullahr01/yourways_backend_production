@@ -25,12 +25,12 @@ const bookingSchema = new mongoose.Schema(
     // Property Details
     collectionPropertyType: { 
       type: String, 
-      enum: ['House', 'Apartment', 'Office', 'Storage', 'Other'],
+      enum: ['House', 'Flat', 'Apartment', 'Office', 'Storage', 'Other'],
       default: 'House' 
     },
     deliveryPropertyType: { 
       type: String, 
-      enum: ['House', 'Apartment', 'Office', 'Storage', 'Other'],
+      enum: ['House', 'Flat', 'Apartment', 'Office', 'Storage', 'Other'],
       default: 'House' 
     },
     collectionFloorLevel: { 
