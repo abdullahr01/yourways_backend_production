@@ -12,7 +12,7 @@ const bookingRoutes = require('./routes/booking_router');
 const app = express();
 
 const allowedOrigins = [
-    'http://localhost:65018',
+    'http://localhost:51585',
     'http://localhost:5000'
 ];
 

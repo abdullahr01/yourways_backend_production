@@ -1,3 +1,4 @@
+// booking_model.js (UPDATED WITH PRICE FIELDS)
 const mongoose = require('mongoose');
 
 const bookingItemSchema = new mongoose.Schema({
@@ -25,42 +26,48 @@ const bookingSchema = new mongoose.Schema(
     // Property Details
     collectionPropertyType: { 
       type: String, 
-      enum: ['House', 'Flat', 'Apartment', 'Office', 'Storage', 'Other'],
+      enum: ['House', 'Flat', 'Studio', 'Storage Unit', 'Office', 'Flatshare'],
       default: 'House' 
     },
     deliveryPropertyType: { 
       type: String, 
-      enum: ['House', 'Flat', 'Apartment', 'Office', 'Storage', 'Other'],
+      enum: ['House', 'Flat', 'Studio', 'Storage Unit', 'Office', 'Flatshare'],
       default: 'House' 
     },
     collectionFloorLevel: { 
       type: String, 
-      enum: ['Ground Floor', 'First Floor', 'Second Floor', 'Third Floor', 'Fourth Floor+'],
+      enum: ['Ground Floor', '1st Floor', '2nd Floor', '3rd Floor+', 'Basement'],
       default: 'Ground Floor' 
     },
     deliveryFloorLevel: { 
       type: String, 
-      enum: ['Ground Floor', 'First Floor', 'Second Floor', 'Third Floor', 'Fourth Floor+'],
+      enum: ['Ground Floor', '1st Floor', '2nd Floor', '3rd Floor+', 'Basement'],
       default: 'Ground Floor' 
     },
     collectionLiftAccess: { type: Boolean, default: false },
     deliveryLiftAccess: { type: Boolean, default: false },
     parkingAccess: { 
       type: String, 
-      enum: ['Easy Access (Driveway/Loading Bay)', 'Street Parking', 'Restricted Access', 'No Parking Nearby'],
+      enum: [
+        'Easy Access (Driveway/Loading Bay)', 
+        'Difficult Access (Permits/Long Carry)', 
+        'Street Parking', 
+        'Restricted Access', 
+        'No Parking Nearby'
+      ],
       default: 'Easy Access (Driveway/Loading Bay)' 
     },
 
     // Service Level
     manpowerRequired: { 
       type: String, 
-      enum: ['1 Man Team', '2 Man Team', '3 Man Team', '4+ Man Team'],
+      enum: ['1 Man (Driver Assisted)', '2 Man Team', '3 Man Team', '4+ Man Team'],
       default: '2 Man Team' 
     },
     dismantlingRequired: { type: Boolean, default: false },
     packingService: { 
       type: String, 
-      enum: ['None', 'Partial Packing', 'Full Packing'],
+      enum: ['None', 'Materials Only', 'Fragile Items Only', 'Full Packing Service'],
       default: 'None' 
     },
     insuranceValue: { type: Number, default: 0, min: 0 },
@@ -74,6 +81,28 @@ const bookingSchema = new mongoose.Schema(
 
     // Items List
     items: [bookingItemSchema],
+
+    // Pricing Information (NEW)
+    calculatedPrice: { 
+      type: Number, 
+      default: null,
+      min: 0 
+    },
+    priceBreakdown: {
+      distanceMiles: { type: Number },
+      basePrice: { type: Number },
+      manpowerCost: { type: Number },
+      itemsCost: { type: Number },
+      floorCharge: { type: Number },
+      packingCost: { type: Number },
+      dismantlingCost: { type: Number },
+      insuranceCost: { type: Number },
+      parkingCharge: { type: Number },
+      subtotal: { type: Number },
+      vat: { type: Number },
+      total: { type: Number },
+      volumeDiscount: { type: Number }
+    },
 
     // Metadata
     status: { 
@@ -103,5 +132,13 @@ bookingSchema.virtual('totalItems').get(function() {
 
 // Index for faster queries
 bookingSchema.index({ userId: 1, status: 1, createdAt: -1 });
+
+// Pre-save validation: ensure price is set before submission
+bookingSchema.pre('save', function(next) {
+  if (this.status === 'submitted' && !this.calculatedPrice) {
+    return next(new Error('Price must be calculated before submission'));
+  }
+  next();
+});
 
 module.exports = mongoose.model('Booking', bookingSchema);
