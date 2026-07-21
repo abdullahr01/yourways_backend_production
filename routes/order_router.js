@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const OrderController = require('../controllers/order_controller');
+const logger = require('../utils/logger');
+
+logger.info('[ROUTES] Order routes loaded: create, status, assign-driver, cancel');
 
 // Create order from booking
 router.post('/create-from-booking', OrderController.createFromBooking);

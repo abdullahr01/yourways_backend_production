@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
+const logger = require('../utils/logger');
 
 const userSchema = new mongoose.Schema(
   {
@@ -25,6 +26,7 @@ const userSchema = new mongoose.Schema(
 
 // Method to generate JWT token
 userSchema.methods.generateAuthToken = function() {
+  logger.info(`[USER MODEL] Generating token for user: ${this._id}`);
   const token = jwt.sign(
     { 
       _id: this._id, 

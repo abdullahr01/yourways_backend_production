@@ -235,25 +235,17 @@ class DriverController {
   async completePickup(req, res) {
     try {
       const { id, orderId } = req.params;
-      const { additionalItems, photos, comment } = req.body;
-      
-      logger.info(`[INFO] 📦 Driver ${id} completing pickup for order ${orderId}`);
-      if (additionalItems) {
-        logger.info(`[INFO] Additional items: ${additionalItems.length}`);
-      }
-      if (photos) {
-        logger.info(`[INFO] Photos: ${photos.length}`);
-      }
-      if (comment) {
-        logger.info(`[INFO] Comment: ${comment}`);
-      }
-      
+      const { additionalItems, photos, comment, signature } = req.body;
+
+      logger.info(`[DRIVER CTRL] Complete pickup: driver=${id} order=${orderId}`);
+
       const order = await DriverService.completePickup(
         id,
         orderId,
         additionalItems,
         photos,
-        comment
+        comment,
+        signature
       );
       
       logger.success(`[SUCCESS] ✅ Pickup completed: ${order.orderId}`);
@@ -267,21 +259,16 @@ class DriverController {
   async completeDelivery(req, res) {
     try {
       const { id, orderId } = req.params;
-      const { photos, comment } = req.body;
-      
-      logger.info(`[INFO] 🚚 Driver ${id} completing delivery for order ${orderId}`);
-      if (photos) {
-        logger.info(`[INFO] Photos: ${photos.length}`);
-      }
-      if (comment) {
-        logger.info(`[INFO] Comment: ${comment}`);
-      }
-      
+      const { photos, comment, signature } = req.body;
+
+      logger.info(`[DRIVER CTRL] Complete delivery: driver=${id} order=${orderId}`);
+
       const order = await DriverService.completeDelivery(
         id,
         orderId,
         photos,
-        comment
+        comment,
+        signature
       );
       
       logger.success(`[SUCCESS] ✅ Delivery completed: ${order.orderId}`);

@@ -1,5 +1,6 @@
-// booking_model.js (UPDATED WITH PRICE FIELDS)
+// booking_model.js
 const mongoose = require('mongoose');
+const logger = require('../utils/logger');
 
 const bookingItemSchema = new mongoose.Schema({
   itemId: { type: String, required: true },
@@ -135,6 +136,9 @@ bookingSchema.index({ userId: 1, status: 1, createdAt: -1 });
 
 // Pre-save validation: ensure price is set before submission
 bookingSchema.pre('save', function(next) {
+  if (this.isModified('status')) {
+    logger.info(`[BOOKING MODEL] Status -> ${this.status} (id: ${this._id || 'new'})`);
+  }
   if (this.status === 'submitted' && !this.calculatedPrice) {
     return next(new Error('Price must be calculated before submission'));
   }

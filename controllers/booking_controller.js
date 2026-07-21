@@ -195,6 +195,29 @@ class BookingController {
   }
 
   /**
+   * Calculate quotation price
+   * POST /api/bookings/:id/calculate-price
+   */
+  async calculatePrice(req, res) {
+    try {
+      logger.info(`[BOOKING CTRL] Calculate price request: ${req.params.id}`);
+
+      const booking = await BookingService.calculatePrice(req.params.id);
+
+      logger.success(`[BOOKING CTRL] Price calculated: £${booking.calculatedPrice}`);
+      return successResponse(res, 200, 'Price calculated successfully', {
+        calculatedPrice: booking.calculatedPrice,
+        priceBreakdown: booking.priceBreakdown,
+        estimatedDeliveryHours: booking.priceBreakdown?.estimatedDeliveryHours,
+        booking,
+      });
+    } catch (err) {
+      logger.error(`[BOOKING CTRL] Calculate price failed: ${err.message}`);
+      return errorResponse(res, 400, 'Price calculation failed', err.message);
+    }
+  }
+
+  /**
    * Delete booking
    * DELETE /api/bookings/:id
    */

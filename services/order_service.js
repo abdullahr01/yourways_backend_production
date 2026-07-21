@@ -1,7 +1,8 @@
 const Order = require('../models/order_model');
 const Booking = require('../models/booking_model');
-const Driver = require('../models/driver_model')
+const Driver = require('../models/driver_model');
 const logger = require('../utils/logger');
+const { formatOrder, formatOrders } = require('../utils/orderFormatter');
 
 class OrderService {
   /**
@@ -68,9 +69,9 @@ class OrderService {
           modifiers: Object.fromEntries(item.modifiers)
         })),
         
-        // Pricing
-        totalPrice: additionalData.totalPrice || 0,
-        quotedPrice: additionalData.quotedPrice,
+        // Pricing — use booking quotation if available
+        totalPrice: additionalData.totalPrice || booking.calculatedPrice || 0,
+        quotedPrice: additionalData.quotedPrice || booking.calculatedPrice,
         
         // Metadata
         meta: booking.meta
@@ -84,10 +85,10 @@ class OrderService {
       booking.convertedOrderId = order._id;
       await booking.save();
       
-      logger.success(`Order created successfully: ${order.orderId}`);
-      logger.info(`Booking ${bookingId} marked as converted`);
-      
-      return order;
+      logger.success(`[ORDER] Created from booking: ${order.orderId} (status: pending, price: £${order.totalPrice})`);
+      logger.info(`[ORDER] Booking ${bookingId} marked as converted`);
+
+      return formatOrder(order);
     } catch (err) {
       logger.error(`Error creating order from booking: ${err.message}`);
       throw err;
@@ -104,10 +105,10 @@ class OrderService {
       const order = new Order(orderData);
       await order.save();
       
-      logger.success(`Order created successfully: ${order.orderId}`);
-      logger.info(`Total items in order: ${order.totalItems}`);
-      
-      return order;
+      logger.success(`[ORDER] Created: ${order.orderId}`);
+      logger.info(`[ORDER] Total items: ${order.totalItems}`);
+
+      return formatOrder(order);
     } catch (err) {
       logger.error(`Error creating order: ${err.message}`);
       throw err;
@@ -123,15 +124,16 @@ class OrderService {
       
       const order = await Order.findById(orderId)
         .populate('userId', 'name email phone')
-        .populate('bookingId');
+        .populate('bookingId')
+        .populate('driver', 'name phone vehicleType vehicleNumber rating');
       
       if (!order) {
         logger.warn(`Order not found with ID: ${orderId}`);
         throw new Error('Order not found');
       }
       
-      logger.success(`Order fetched successfully: ${order.orderId}`);
-      return order;
+      logger.success(`[ORDER] Fetched: ${order.orderId}`);
+      return formatOrder(order);
     } catch (err) {
       logger.error(`Error fetching order: ${err.message}`);
       throw err;
@@ -147,15 +149,16 @@ class OrderService {
       
       const order = await Order.findOne({ orderId })
         .populate('userId', 'name email phone')
-        .populate('bookingId');
+        .populate('bookingId')
+        .populate('driver', 'name phone vehicleType vehicleNumber rating');
       
       if (!order) {
         logger.warn(`Order not found with orderId: ${orderId}`);
         throw new Error('Order not found');
       }
       
-      logger.success(`Order fetched successfully: ${orderId}`);
-      return order;
+      logger.success(`[ORDER] Fetched by code: ${orderId}`);
+      return formatOrder(order);
     } catch (err) {
       logger.error(`Error fetching order by orderId: ${err.message}`);
       throw err;
@@ -172,11 +175,12 @@ class OrderService {
       
       const orders = await Order.find(filter)
         .populate('userId', 'name email phone')
+        .populate('driver', 'name phone vehicleType vehicleNumber rating')
         .sort({ createdAt: -1 })
         .limit(limit);
-      
-      logger.success(`Fetched ${orders.length} orders`);
-      return orders;
+
+      logger.success(`[ORDER] Fetched ${orders.length} orders`);
+      return formatOrders(orders);
     } catch (err) {
       logger.error(`Error fetching orders: ${err.message}`);
       throw err;
@@ -197,10 +201,11 @@ class OrderService {
       }
       
       const orders = await Order.find(filter)
+        .populate('driver', 'name phone vehicleType vehicleNumber rating')
         .sort({ createdAt: -1 });
-      
-      logger.success(`Fetched ${orders.length} orders for user ${userId}`);
-      return orders;
+
+      logger.success(`[ORDER] Fetched ${orders.length} orders for user ${userId}`);
+      return formatOrders(orders);
     } catch (err) {
       logger.error(`Error fetching user orders: ${err.message}`);
       throw err;
@@ -225,10 +230,11 @@ class OrderService {
       
       const orders = await Order.find(filter)
         .populate('userId', 'name email phone')
+        .populate('driver', 'name phone vehicleType vehicleNumber rating')
         .sort({ createdAt: -1 });
-      
-      logger.success(`Fetched ${orders.length} active orders`);
-      return orders;
+
+      logger.success(`[ORDER] Fetched ${orders.length} active orders`);
+      return formatOrders(orders);
     } catch (err) {
       logger.error(`Error fetching active orders: ${err.message}`);
       throw err;
@@ -244,12 +250,13 @@ class OrderService {
       
       const validStatuses = [
         'pending',
+        'confirmed',
         'pickupScheduled',
         'outForPickup',
         'pickupCompleted',
         'outForDropOff',
         'completed',
-        'cancelled'
+        'cancelled',
       ];
       
       if (!validStatuses.includes(newStatus)) {
@@ -268,14 +275,14 @@ class OrderService {
         orderId,
         updateData,
         { new: true, runValidators: true }
-      );
-      
+      ).populate('driver', 'name phone vehicleType vehicleNumber rating');
+
       if (!order) {
         throw new Error('Order not found');
       }
-      
-      logger.success(`Order status updated: ${order.orderId} -> ${newStatus}`);
-      return order;
+
+      logger.success(`[ORDER] Status updated: ${order.orderId} -> ${newStatus}`);
+      return formatOrder(order);
     } catch (err) {
       logger.error(`Error updating order status: ${err.message}`);
       throw err;
@@ -283,26 +290,42 @@ class OrderService {
   }
 
   /**
-   * Assign driver to order
+   * Assign driver to order (YourWays doc: admin assigns -> status becomes confirmed)
    */
   async assignDriver(orderId, driverId) {
-    // 1. Verify driver exists and is approved
-    const driver = await Driver.findById(driverId);
-  
-    // 2. Assign driver to order
-    const order = await Order.findByIdAndUpdate(
-      orderId,
-      { driver: driverId },
-      { new: true }
-    ).populate('driver');
-  
-    // 3. Add order to driver's assignedOrders array ✅ NEW
-    await Driver.findByIdAndUpdate(
-      driverId,
-      { $addToSet: { assignedOrders: orderId } }
-    );
-  
-    return order;
+    try {
+      logger.info(`[ORDER] Assigning driver ${driverId} to order ${orderId}`);
+
+      const driver = await Driver.findById(driverId);
+      if (!driver) {
+        throw new Error('Driver not found');
+      }
+      if (!driver.isApprovedByAdmin) {
+        throw new Error('Driver is not approved by admin');
+      }
+
+      const order = await Order.findById(orderId);
+      if (!order) {
+        throw new Error('Order not found');
+      }
+
+      const updateData = { driver: driverId };
+      if (order.status === 'pending') {
+        updateData.status = 'confirmed';
+        logger.info('[ORDER] Status will change: pending -> confirmed');
+      }
+
+      const updatedOrder = await Order.findByIdAndUpdate(orderId, updateData, { new: true })
+        .populate('driver', 'name phone vehicleType vehicleNumber rating');
+
+      await Driver.findByIdAndUpdate(driverId, { $addToSet: { assignedOrders: orderId } });
+
+      logger.success(`[ORDER] Driver ${driver.name} assigned to ${updatedOrder.orderId}`);
+      return formatOrder(updatedOrder);
+    } catch (err) {
+      logger.error(`[ORDER] Assign driver failed: ${err.message}`);
+      throw err;
+    }
   }
 
   /**
@@ -332,8 +355,8 @@ class OrderService {
         throw new Error('Order not found');
       }
       
-      logger.success(`Pricing updated for order: ${order.orderId}`);
-      return order;
+      logger.success(`[ORDER] Pricing updated: ${order.orderId}`);
+      return formatOrder(order);
     } catch (err) {
       logger.error(`Error updating pricing: ${err.message}`);
       throw err;
@@ -344,18 +367,40 @@ class OrderService {
    * Cancel order
    */
   async cancelOrder(orderId, cancellationReason) {
-    const order = await Order.findById(orderId);
-  
-    // Remove order from driver's list if assigned
-    if (order.driver) {
-      await Driver.findByIdAndUpdate(
-        order.driver,
-        { $pull: { assignedOrders: orderId } }
-      );
+    try {
+      logger.info(`[ORDER] Cancelling order: ${orderId}`);
+      logger.info(`[ORDER] Reason: ${cancellationReason}`);
+
+      const order = await Order.findById(orderId);
+      if (!order) {
+        throw new Error('Order not found');
+      }
+
+      if (order.status === 'completed') {
+        throw new Error('Cannot cancel a completed order');
+      }
+      if (order.status === 'cancelled') {
+        throw new Error('Order is already cancelled');
+      }
+
+      if (order.driver) {
+        await Driver.findByIdAndUpdate(order.driver, { $pull: { assignedOrders: orderId } });
+        logger.info(`[ORDER] Removed from driver ${order.driver} assigned list`);
+      }
+
+      order.status = 'cancelled';
+      order.cancellationReason = cancellationReason;
+      await order.save();
+
+      const populated = await Order.findById(orderId)
+        .populate('driver', 'name phone vehicleType vehicleNumber rating');
+
+      logger.success(`[ORDER] Cancelled: ${order.orderId}`);
+      return formatOrder(populated);
+    } catch (err) {
+      logger.error(`[ORDER] Cancel failed: ${err.message}`);
+      throw err;
     }
-  
-    order.status = 'cancelled';
-    // ... rest of cancellation logic
   }
 
   /**
@@ -363,23 +408,23 @@ class OrderService {
    */
   async updateOrder(orderId, updateData) {
     try {
-      logger.info(`Updating order: ${orderId}`);
-      logger.info(`Update data: ${JSON.stringify(updateData)}`);
-      
+      logger.info(`[ORDER] Updating order: ${orderId}`);
+      logger.info(`[ORDER] Update data: ${JSON.stringify(updateData)}`);
+
       const order = await Order.findByIdAndUpdate(
         orderId,
         updateData,
         { new: true, runValidators: true }
-      );
-      
+      ).populate('driver', 'name phone vehicleType vehicleNumber rating');
+
       if (!order) {
         throw new Error('Order not found');
       }
-      
-      logger.success(`Order updated successfully: ${order.orderId}`);
-      return order;
+
+      logger.success(`[ORDER] Updated: ${order.orderId}`);
+      return formatOrder(order);
     } catch (err) {
-      logger.error(`Error updating order: ${err.message}`);
+      logger.error(`[ORDER] Update failed: ${err.message}`);
       throw err;
     }
   }
@@ -396,17 +441,17 @@ class OrderService {
         orderId,
         {
           pickupDateTime: new Date(pickupDateTime),
-          status: 'pickupScheduled'
+          status: 'pickupScheduled',
         },
         { new: true, runValidators: true }
-      );
+      ).populate('driver', 'name phone vehicleType vehicleNumber rating');
       
       if (!order) {
         throw new Error('Order not found');
       }
       
-      logger.success(`Pickup scheduled for order: ${order.orderId}`);
-      return order;
+      logger.success(`[ORDER] Pickup scheduled: ${order.orderId}`);
+      return formatOrder(order);
     } catch (err) {
       logger.error(`Error scheduling pickup: ${err.message}`);
       throw err;

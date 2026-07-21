@@ -1,4 +1,5 @@
 const Booking = require('../models/booking_model');
+const PricingService = require('./pricing_service');
 const logger = require('../utils/logger');
 
 class BookingService {
@@ -213,37 +214,74 @@ class BookingService {
   }
 
   /**
-   * Submit booking (mark as submitted, ready for conversion to order)
+   * Calculate and save quotation for a booking (YourWays doc Step 3)
    */
-  async submitBooking(bookingId) {
+  async calculatePrice(bookingId) {
     try {
-      logger.info(`Submitting booking: ${bookingId}`);
-      
+      logger.info(`[BOOKING] Calculating price for booking: ${bookingId}`);
+
       const booking = await Booking.findById(bookingId);
       if (!booking) {
         throw new Error('Booking not found');
       }
-      
+
+      if (booking.status !== 'draft') {
+        throw new Error('Price can only be calculated for draft bookings');
+      }
+
+      const breakdown = PricingService.calculateQuotation(booking.toObject());
+      booking.calculatedPrice = breakdown.total;
+      booking.priceBreakdown = breakdown;
+      await booking.save();
+
+      logger.success(`[BOOKING] Price calculated: £${breakdown.total} for booking ${bookingId}`);
+      return booking;
+    } catch (err) {
+      logger.error(`[BOOKING] Price calculation failed: ${err.message}`);
+      throw err;
+    }
+  }
+
+  /**
+   * Submit booking (mark as submitted, ready for conversion to order)
+   */
+  async submitBooking(bookingId) {
+    try {
+      logger.info(`[BOOKING] Submitting booking: ${bookingId}`);
+
+      const booking = await Booking.findById(bookingId);
+      if (!booking) {
+        throw new Error('Booking not found');
+      }
+
       if (booking.status !== 'draft') {
         throw new Error('Only draft bookings can be submitted');
       }
-      
+
       if (!booking.acceptTerms) {
         throw new Error('Terms must be accepted before submission');
       }
-      
+
       if (booking.items.length === 0) {
         throw new Error('Cannot submit booking without items');
       }
-      
+
+      // Auto-calculate price if not done yet
+      if (!booking.calculatedPrice) {
+        logger.info('[BOOKING] No price yet — calculating before submit...');
+        const breakdown = PricingService.calculateQuotation(booking.toObject());
+        booking.calculatedPrice = breakdown.total;
+        booking.priceBreakdown = breakdown;
+      }
+
       booking.status = 'submitted';
       booking.submittedAt = new Date();
       await booking.save();
-      
-      logger.success(`Booking submitted successfully: ${bookingId}`);
+
+      logger.success(`[BOOKING] Booking submitted: ${bookingId} (price: £${booking.calculatedPrice})`);
       return booking;
     } catch (err) {
-      logger.error(`Error submitting booking: ${err.message}`);
+      logger.error(`[BOOKING] Submit failed: ${err.message}`);
       throw err;
     }
   }

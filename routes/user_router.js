@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const UserController = require('../controllers/user_controller');
+const logger = require('../utils/logger');
+
+logger.info('[ROUTES] User routes loaded: register, login, profile, verify-token');
 
 // Public routes
 router.post('/register', UserController.register);

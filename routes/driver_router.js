@@ -1,7 +1,9 @@
-// routes/driver_routes.js
 const express = require('express');
 const router = express.Router();
 const DriverController = require('../controllers/driver_controller');
+const logger = require('../utils/logger');
+
+logger.info('[ROUTES] Driver routes loaded: auth, orders, location, statistics');
 
 // ==================== Authentication ====================
 router.post('/register', DriverController.register);

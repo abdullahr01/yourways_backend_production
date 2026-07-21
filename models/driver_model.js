@@ -1,5 +1,6 @@
 // models/driver_model.js
 const mongoose = require('mongoose');
+const logger = require('../utils/logger');
 
 const driverSchema = new mongoose.Schema(
   {
@@ -55,6 +56,7 @@ driverSchema.methods.updateRating = function (newRating) {
 };
 
 driverSchema.methods.updateLocation = function (latitude, longitude) {
+  logger.info(`[DRIVER MODEL] Location update: ${latitude}, ${longitude}`);
   this.currentLocation = {
     latitude,
     longitude,

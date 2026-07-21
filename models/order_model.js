@@ -1,5 +1,6 @@
 // models/order_model.js
 const mongoose = require('mongoose');
+const logger = require('../utils/logger');
 
 const orderItemSchema = new mongoose.Schema({
   category: { type: String, required: true },
@@ -16,14 +17,15 @@ const orderSchema = new mongoose.Schema(
     
     serviceName: { type: String, required: true },
     
-    // Status Management
+    // Status Management (YourWays doc Section 7 flow)
+    // pending -> confirmed -> outForPickup -> pickupCompleted -> outForDropOff -> completed
     status: {
       type: String,
       enum: [
         'pending',
+        'confirmed',
         'pickupScheduled',
         'outForPickup',
-        'itemsCollected',
         'pickupCompleted',
         'outForDropOff',
         'completed',
@@ -70,9 +72,11 @@ const orderSchema = new mongoose.Schema(
     // Additional items collected by driver
     additionalItems: [orderItemSchema],
 
-    // Photos
+    // Photos & Signatures (YourWays doc Section 6.4)
     pickupPhotos: [{ type: String }],
     deliveryPhotos: [{ type: String }],
+    pickupSignature: { type: String },
+    deliverySignature: { type: String },
 
     // Driver comments
     driverComment: { type: String },
@@ -123,6 +127,10 @@ orderSchema.pre('save', async function(next) {
     const timeStr = `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
     const random = Math.floor(Math.random() * 9000) + 1000;
     this.orderId = `ORD-${dateStr}-${timeStr}-${random}`;
+    logger.info(`[ORDER MODEL] Generated orderId: ${this.orderId}`);
+  }
+  if (this.isModified('status')) {
+    logger.info(`[ORDER MODEL] Status changed to: ${this.status} (orderId: ${this.orderId || 'new'})`);
   }
   next();
 });

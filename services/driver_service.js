@@ -1,7 +1,7 @@
-// services/driver_service.js
 const Driver = require('../models/driver_model');
 const Order = require('../models/order_model');
 const logger = require('../utils/logger');
+const { formatOrder, formatOrders } = require('../utils/orderFormatter');
 
 class DriverService {
   // ==================== Authentication ====================
@@ -254,10 +254,11 @@ class DriverService {
 
       const orders = await Order.find(query)
         .populate('userId', 'name phone email')
+        .populate('driver', 'name phone vehicleType vehicleNumber rating')
         .sort({ pickupDateTime: 1 });
-      
-      logger.success(`[SUCCESS] ✅ Fetched ${orders.length} orders for driver: ${driver.name}`);
-      return orders;
+
+      logger.success(`[DRIVER] Fetched ${orders.length} orders for ${driver.name}`);
+      return formatOrders(orders);
     } catch (err) {
       logger.error(`[ERROR] ❌ Get Driver Orders failed: ${err.message}`);
       throw err;
@@ -269,24 +270,25 @@ class DriverService {
       logger.info(`[INFO] Fetching active orders for driver: ${driverId}`);
       
       const activeStatuses = [
+        'confirmed',
         'pickupScheduled',
         'outForPickup',
-        'itemsCollected',
-        'outForDropOff'
+        'pickupCompleted',
+        'outForDropOff',
       ];
 
-      logger.info(`[INFO] Active statuses: ${activeStatuses.join(', ')}`);
+      logger.info(`[DRIVER] Active statuses: ${activeStatuses.join(', ')}`);
 
-      // FIXED: Query by driver ObjectId reference
       const orders = await Order.find({
         driver: driverId,
-        status: { $in: activeStatuses }
+        status: { $in: activeStatuses },
       })
         .populate('userId', 'name phone email')
+        .populate('driver', 'name phone vehicleType vehicleNumber rating')
         .sort({ pickupDateTime: 1 });
-      
-      logger.success(`[SUCCESS] ✅ Fetched ${orders.length} active orders for driver`);
-      return orders;
+
+      logger.success(`[DRIVER] Fetched ${orders.length} active orders`);
+      return formatOrders(orders);
     } catch (err) {
       logger.error(`[ERROR] ❌ Get Driver Active Orders failed: ${err.message}`);
       throw err;
@@ -332,47 +334,52 @@ class DriverService {
         orderId,
         updateData,
         { new: true }
-      ).populate('userId', 'name phone email');
-      
-      logger.success(`[SUCCESS] ✅ Order ${order.orderId} status updated to ${newStatus}`);
-      return updatedOrder;
+      )
+        .populate('userId', 'name phone email')
+        .populate('driver', 'name phone vehicleType vehicleNumber rating');
+
+      logger.success(`[DRIVER] Order ${order.orderId} status -> ${newStatus}`);
+      return formatOrder(updatedOrder);
     } catch (err) {
       logger.error(`[ERROR] ❌ Update Order Status failed: ${err.message}`);
       throw err;
     }
   }
 
-  async completePickup(driverId, orderId, additionalItems = [], photos = [], comment = '') {
+  async completePickup(driverId, orderId, additionalItems = [], photos = [], comment = '', signature = '') {
     try {
-      logger.info(`[INFO] Driver ${driverId} completing pickup for order ${orderId}`);
-      
+      logger.info(`[DRIVER] Completing pickup: driver=${driverId} order=${orderId}`);
+
       const additionalData = {
-        pickupCompletedAt: new Date()
+        pickupCompletedAt: new Date(),
       };
 
-      if (additionalItems && additionalItems.length > 0) {
+      if (additionalItems?.length > 0) {
         additionalData.additionalItems = additionalItems;
-        logger.info(`[INFO] Additional items count: ${additionalItems.length}`);
+        logger.info(`[DRIVER] Additional items: ${additionalItems.length}`);
       }
-
-      if (photos && photos.length > 0) {
+      if (photos?.length > 0) {
         additionalData.pickupPhotos = photos;
-        logger.info(`[INFO] Pickup photos count: ${photos.length}`);
+        logger.info(`[DRIVER] Pickup photos: ${photos.length}`);
       }
-
       if (comment) {
         additionalData.driverComment = comment;
-        logger.info(`[INFO] Driver comment: ${comment}`);
+        logger.info(`[DRIVER] Comment: ${comment}`);
+      }
+      if (signature) {
+        additionalData.pickupSignature = signature;
+        logger.info('[DRIVER] Pickup signature captured');
       }
 
+      // YourWays doc: status becomes "Pickup Completed"
       const order = await this.updateOrderStatus(
-        driverId, 
-        orderId, 
-        'itemsCollected',
+        driverId,
+        orderId,
+        'pickupCompleted',
         additionalData
       );
-      
-      logger.success(`[SUCCESS] ✅ Pickup completed for order ${order.orderId}`);
+
+      logger.success(`[DRIVER] Pickup completed: ${order.id}`);
       return order;
     } catch (err) {
       logger.error(`[ERROR] ❌ Complete Pickup failed: ${err.message}`);
@@ -380,37 +387,38 @@ class DriverService {
     }
   }
 
-  async completeDelivery(driverId, orderId, photos = [], comment = '') {
+  async completeDelivery(driverId, orderId, photos = [], comment = '', signature = '') {
     try {
-      logger.info(`[INFO] Driver ${driverId} completing delivery for order ${orderId}`);
-      
+      logger.info(`[DRIVER] Completing delivery: driver=${driverId} order=${orderId}`);
+
       const additionalData = {
-        deliveryCompletedAt: new Date()
+        deliveryCompletedAt: new Date(),
       };
 
-      if (photos && photos.length > 0) {
+      if (photos?.length > 0) {
         additionalData.deliveryPhotos = photos;
-        logger.info(`[INFO] Delivery photos count: ${photos.length}`);
+        logger.info(`[DRIVER] Delivery photos: ${photos.length}`);
       }
-
       if (comment) {
         const order = await Order.findById(orderId);
-        if (order && order.driverComment) {
-          additionalData.driverComment = `${order.driverComment} | Delivery: ${comment}`;
-        } else {
-          additionalData.driverComment = comment;
-        }
-        logger.info(`[INFO] Driver comment: ${comment}`);
+        additionalData.driverComment = order?.driverComment
+          ? `${order.driverComment} | Delivery: ${comment}`
+          : comment;
+        logger.info(`[DRIVER] Comment: ${comment}`);
+      }
+      if (signature) {
+        additionalData.deliverySignature = signature;
+        logger.info('[DRIVER] Delivery signature captured');
       }
 
       const order = await this.updateOrderStatus(
-        driverId, 
-        orderId, 
+        driverId,
+        orderId,
         'completed',
         additionalData
       );
-      
-      logger.success(`[SUCCESS] ✅ Delivery completed for order ${order.orderId}`);
+
+      logger.success(`[DRIVER] Delivery completed: ${order.id}`);
       return order;
     } catch (err) {
       logger.error(`[ERROR] ❌ Complete Delivery failed: ${err.message}`);
@@ -438,11 +446,11 @@ class DriverService {
         driver: driverId, 
         status: 'completed' 
       });
-      const activeOrders = await Order.countDocuments({ 
+      const activeOrders = await Order.countDocuments({
         driver: driverId,
-        status: { 
-          $in: ['pickupScheduled', 'outForPickup', 'itemsCollected', 'outForDropOff'] 
-        }
+        status: {
+          $in: ['confirmed', 'pickupScheduled', 'outForPickup', 'pickupCompleted', 'outForDropOff'],
+        },
       });
 
       const statistics = {
