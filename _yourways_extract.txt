@@ -1,0 +1,979 @@
+YourWays
+1. Project Overview
+The Cargo Logistics Platform is a complete digital solution designed for cargo booking, goods transportation, live tracking, and logistics management.
+The system consists of:
+Customer Mobile Application 
+Driver Mobile Application 
+Customer Website 
+Admin Panel 
+Backend Infrastructure 
+The platform enables users to book drivers for transporting goods from one location to another while providing real-time tracking, quotation generation, notifications, and centralized administrative control.
+The project is designed to simplify logistics operations, improve customer experience, and automate the cargo booking workflow.
+2. Project Objectives
+The main objectives of the project are:
+Provide an easy cargo booking system 
+Automate quotation generation 
+Enable real-time order tracking 
+Improve logistics management 
+Centralize booking and driver management 
+Provide live order status updates 
+Offer seamless mobile and web experience 
+Enable targeted promotional notifications 
+Create scalable infrastructure for future expansion 
+3. Project Platforms
+3.1 Customer Mobile Application
+The mobile application will allow customers to:
+Register/Login using OTP 
+Book cargo transportation 
+Get quotations 
+Track deliveries live 
+View order history 
+Make online payments 
+Receive notifications 
+3.2 Driver Mobile Application
+The driver application will allow drivers to:
+Login using OTP 
+View assigned bookings 
+Update booking statuses 
+Upload pickup/dropoff images 
+Capture customer signatures 
+Manage delivery workflow 
+3.3 Customer Website
+The website will provide:
+Service information 
+OTP login/register 
+Cargo booking 
+Order tracking 
+Payment support 
+Order management 
+The website will also be SEO optimized using Jasper for better search engine visibility.
+3.4 Admin Panel
+The admin panel will provide:
+Dashboard and analytics 
+Booking management 
+Driver assignment 
+Customer management 
+Driver management 
+Promotions and discounts 
+Reports and monitoring 
+4. User Roles
+4.1 Customer/User
+The customer can:
+Register/Login 
+Book cargo services 
+Get quotations 
+Track orders 
+View order history 
+Make payments 
+Receive notifications 
+4.2 Driver
+The driver can:
+Login 
+View assigned orders 
+Update booking statuses 
+Upload images 
+Capture signatures 
+Complete deliveries 
+4.3 Admin
+The admin can:
+Manage users 
+Manage drivers 
+Assign bookings 
+Track deliveries 
+Monitor operations 
+Generate reports 
+Manage pricing and discounts 
+5 Goods Categories & Subcategories
+The platform supports structured category-based item selection to simplify quotation generation, logistics planning, manpower allocation, and vehicle assignment.
+Customers can select items from the following categories and subcategories.
+Home
+Bedroom
+Beds & Mattresses
+Single Bed & Mattress 
+Double Bed & Mattress 
+Kingsize Bed & Mattress 
+Super Kingsize Bed & Mattress 
+Single Bed Frame 
+Double Bed Frame 
+Kingsize Bed Frame 
+Bunk Bed 
+Cot 
+Single Mattress 
+Double Mattress 
+Kingsize Mattress 
+Wardrobes & Storage
+Single Wardrobe 
+Double Wardrobe 
+Triple Wardrobe 
+Sliding Door Wardrobe 
+Flat Packed Wardrobe 
+Chest Of Drawers 
+Bedside Table 
+Shelf 
+Ottoman 
+Bedroom Furniture
+Dressing Table 
+Side Table 
+TV 
+Living Room
+Sofas & Seating
+Two Seater Sofa 
+Three Seater Sofa 
+Four Seater Sofa 
+Five Seater Sofa 
+Six Seater Sofa 
+Seven Seater Sofa 
+L Shaped Sofa 
+Corner Sofa 
+Two Seater Reclining Sofa 
+Three Seater Reclining Sofa 
+Two Seater Sofa Bed 
+Three Seater Sofa Bed 
+Corner Sofa Bed 
+Armchair 
+Sofa Chair 
+Rocking Chair 
+Tables & Storage
+Coffee Table 
+TV Stand 
+Bookcase 
+Shelf 
+Electronics & Decor
+Small Television / TV (Less than 30") 
+Medium Television / TV (30" to 40") 
+Large Television / TV (Greater than 40") 
+Artwork 
+Rug 
+Carpet 
+Floor Lamp 
+Foot Stool 
+Chandelier 
+Picture Frame 
+Dining Room
+Dining Furniture
+4 Seater Dining Table 
+6 Seater Dining Table 
+4 Seater Dining Table & Chairs 
+6 Seater Dining Table & Chairs 
+Dining Chair 
+Storage & Decor
+Side Cabinet 
+Display Cabinet 
+Large Mirror 
+Small Mirror 
+Kitchen
+Appliances
+Fridge 
+Fridge Freezer 
+American Fridge 
+Freezer 
+Washing Machine 
+Tumble Dryer 
+Dishwasher 
+Microwave Oven 
+Cooker 
+Air Fryer 
+Kitchen Furniture
+Kitchen Table 
+Chair 
+Stool 
+Bin 
+Utility Items
+Ironing Board 
+Cloth Horse 
+Water Cooler 
+Bathroom
+Bathroom Furniture & Accessories
+Bathroom Cabinet 
+Bath Tub 
+Large Mirror 
+Small Mirror 
+Rug 
+Garden / Lawn
+Outdoor Furniture
+Garden Chair 
+Garden Table 
+Garden Set (5 Seater) 
+Garden Set (6 Seater) 
+Garden Set (7 Seater) 
+Outdoor Storage
+Storage Box Small 
+Storage Box Medium 
+Storage Box Large 
+Boxes & Packaging
+Boxes
+Small Box (Approx. 40 x 30 x 30 cm)
+Medium Box (Approx. 45 x 45 x 35 cm) 
+Large Box (Approx. 50 x 50 x 50 cm)
+Wardrobe Box 
+Crate 
+Bags & Personal Items
+Small Bag 
+Large Bag 
+Suitcase 
+Box Of Clothes 
+Miscellaneous
+Bicycle 
+Office
+Office Furniture
+Desks & Tables
+Office Desk 
+Pedestal Desk 
+Corner Desk 
+Corner Desk With Pedestal 
+Standing Desk 
+Standing Desk - Electric 
+Board Room Table 
+Coffee Table 
+Chairs
+Office Chair 
+Desk Chair 
+Stacking Chair 
+Folding Chair 
+Storage
+Small Filing Cabinet 
+Large Filing Cabinet 
+Pedestal 
+Storage Cabinet 
+Cupboard 
+Locker 
+Bookcase 
+Office Equipment
+Computer 
+Computer Monitor 
+Printer 
+Photocopier 
+TV 
+Drawing Board 
+Projector 
+Projector Screen 
+Mini Fridge 
+Paper Shredder 
+Display Board 
+Office Kitchen
+Kitchen Table 
+Chair 
+Stool 
+Water Cooler 
+Office Packaging
+Boxes
+Small Box 
+Medium Box 
+Large Box 
+Crate 
+Piano Delivery
+Piano Types
+Upright Piano 
+Baby Grand Piano 
+Grand Piano 
+Digital Piano 
+Keyboard Piano 
+Studio Piano 
+Concert Piano 
+Piano Accessories
+Piano Bench 
+Piano Cover 
+Piano Pedals 
+Music Stand 
+Vehicle
+Cars
+Hatchback Car 
+Sedan Car 
+SUV 
+Pickup Truck 
+Van 
+Luxury Car 
+Sports Car 
+Classic Car 
+Non-Running Vehicle 
+Motorcycles & Bikes
+Motorcycle 
+Scooter 
+Dirt Bike 
+Quad Bike 
+Electric Bike 
+Vehicle Parts
+Car Engine 
+Gearbox 
+Car Door 
+Car Bonnet 
+Tires / Wheels 
+Exhaust System 
+Bumper 
+Motorcycle Parts 
+Commercial Vehicles
+Mini Truck 
+Cargo Van 
+Trailer 
+Forklift 
+Industrial (Machinery)
+Industrial Equipment
+Generator 
+Air Compressor 
+Welding Machine 
+Industrial Printer 
+Hydraulic Machine 
+CNC Machine 
+Lathe Machine 
+Milling Machine 
+Packaging Machine 
+Conveyor System 
+Construction Machinery
+Cement Mixer 
+Mini Excavator 
+Forklift 
+Scissor Lift 
+Pallet Jack 
+Industrial Shelving 
+Warehouse Equipment
+Storage Rack 
+Heavy Duty Cabinet 
+Warehouse Trolley 
+Industrial Workbench 
+Man Power Only
+Loading & Moving Assistance
+Loading Assistance 
+Unloading Assistance 
+Furniture Rearrangement 
+Packing Assistance 
+Unpacking Assistance 
+Assembly Assistance 
+Disassembly Assistance 
+Specialist & Antique
+Antique Furniture
+Antique Wardrobe 
+Antique Cabinet 
+Antique Table 
+Antique Chair 
+Antique Desk 
+Antique Bed Frame 
+Antique Mirror 
+Antique Clock 
+Antique Trunk 
+Fine Art & Collectibles
+Painting / Canvas Art 
+Sculpture 
+Framed Artwork 
+Glass Artwork 
+Statue 
+Collectible Item 
+Museum Piece 
+Vintage Decor 
+Fragile & Luxury Items
+Glass Table 
+Marble Table 
+Large Mirror 
+Chandelier 
+Crystal Item 
+Ceramic Item 
+Display Cabinet 
+Luxury Furniture 
+Designer Furniture 
+Specialist Musical Items
+Grandfather Clock 
+Harp 
+Drum Kit 
+Guitar Collection 
+Man and Van
+Small Moves
+Single Item Delivery 
+Student Move 
+Apartment Move 
+Studio Flat Move 
+Delivery Services
+Same Day Delivery 
+Furniture Delivery 
+Store Pickup & Delivery 
+Marketplace Delivery 
+Local Delivery 
+Long Distance Delivery 
+Van Support Services
+Driver Only 
+Driver With Helper 
+Two Movers & Van 
+Three Movers & Van 
+Furniture
+Home Furniture
+Sofa
+Two Seater Sofa 
+Three Seater Sofa 
+Four Seater Sofa 
+Five Seater Sofa 
+Six Seater Sofa 
+Seven Seater Sofa 
+L Shaped Sofa 
+Corner Sofa 
+Two Seater Reclining Sofa 
+Three Seater Reclining Sofa 
+Two Seater Sofa Bed 
+Three Seater Sofa Bed 
+Corner Sofa Bed 
+Armchair 
+Sofa Chair 
+Rocking Chair 
+Bed
+Single Bed 
+Double Bed 
+Kingsize Bed 
+Super Kingsize Bed 
+Bunk Bed 
+Sofa Bed 
+Single Bed Frame 
+Double Bed Frame 
+Kingsize Bed Frame 
+Cot 
+Single Mattress 
+Double Mattress 
+Kingsize Mattress 
+Wardrobe
+Single Wardrobe 
+Double Wardrobe 
+Triple Wardrobe 
+Sliding Door Wardrobe 
+Flat Packed Wardrobe 
+Walk In Wardrobe 
+Chest Of Drawers 
+Bedside Table 
+Shelf 
+Dining Table
+2 Seater Dining Table 
+4 Seater Dining Table 
+6 Seater Dining Table 
+8 Seater Dining Table 
+4 Seater Dining Table & Chairs 
+6 Seater Dining Table & Chairs 
+Dining Chair 
+Dining Bench 
+Coffee Table
+Small Coffee Table 
+Medium Coffee Table 
+Large Coffee Table 
+Glass Coffee Table 
+Marble Coffee Table 
+Nesting Coffee Table 
+TV Stand
+Small TV Stand 
+Medium TV Stand 
+Large TV Stand 
+Wall Mounted TV Unit 
+Entertainment Unit 
+Bookcase
+Small Bookcase 
+Medium Bookcase 
+Large Bookcase 
+Open Shelf Bookcase 
+Closed Door Bookcase 
+Cabinet
+Side Cabinet 
+Display Cabinet 
+Storage Cabinet 
+Glass Cabinet 
+Shoe Cabinet 
+Corner Cabinet 
+Office Furniture
+Office Desk
+Standard Office Desk 
+Pedestal Desk 
+Corner Desk 
+Corner Desk With Pedestal 
+Standing Desk 
+Electric Standing Desk 
+Executive Desk 
+Reception Desk 
+Office Chair
+Standard Office Chair 
+Executive Office Chair 
+Mesh Chair 
+Ergonomic Chair 
+Gaming Chair 
+Visitor Chair 
+Stacking Chair 
+Folding Chair 
+Filing Cabinet
+Small Filing Cabinet 
+Large Filing Cabinet 
+2 Drawer Filing Cabinet 
+4 Drawer Filing Cabinet 
+Mobile Filing Cabinet 
+Board Room Table
+Small Meeting Table 
+Medium Board Room Table 
+Large Board Room Table 
+Conference Table 
+Storage Cabinet
+Office Storage Cabinet 
+Locker 
+Cupboard 
+Pedestal Storage 
+Archive Cabinet 
+Document Cabinet 
+Outdoor Furniture
+Garden Chair
+Plastic Garden Chair 
+Wooden Garden Chair 
+Metal Garden Chair 
+Folding Garden Chair 
+Reclining Garden Chair 
+Garden Table
+Small Garden Table 
+Medium Garden Table 
+Large Garden Table 
+Glass Garden Table 
+Folding Garden Table 
+Garden Set
+2 Seater Garden Set 
+4 Seater Garden Set 
+5 Seater Garden Set 
+6 Seater Garden Set 
+7 Seater Garden Set 
+Rattan Garden Set 
+Corner Garden Set 
+Outdoor Storage Box
+Small Outdoor Storage Box 
+Medium Outdoor Storage Box 
+Large Outdoor Storage Box 
+Waterproof Storage Box 
+Deck Storage Box
+Custom Item
+Create Your Own Item
+Customers can create a custom item by entering:
+Item Name 
+Estimated Dimensions 
+Length 
+Width 
+Height 
+Estimated Weight 
+Quantity 
+Example:
+Model Train Collection 
+Custom Sculpture 
+Exhibition Stand 
+Gym Equipment 
+Additional Service Options
+The platform supports additional delivery and handling requirements.
+Handling Options
+Fragile Item 
+High Value Item 
+Requires Insurance 
+Requires Protective Wrapping 
+Requires Wooden Crating 
+Requires Assembly 
+Requires Disassembly 
+Requires Multiple Movers 
+Stair Access Required 
+Lift Access Available 
+White Glove Delivery 
+Climate Controlled Delivery
+6. Complete Workflow
+6.1 Customer Registration/Login
+User enters phone number 
+OTP is sent using Firebase Authentication 
+User verifies OTP 
+Account is created/login successful 
+6.2 Cargo Booking Flow
+Step 1 — Select Goods
+User selects:
+Categories 
+Subcategories 
+Quantity 
+Weight 
+The system allows multiple item selections.
+Step 2 — Enter Locations
+User enters:
+Pickup location 
+Dropoff location 
+Google Places API will provide:
+Location suggestions 
+Address autocomplete 
+Step 3 — Get Quotation
+The backend calculates quotation using:
+Distance 
+Weight 
+Quantity 
+Traffic conditions 
+Service charges 
+The system returns:
+Estimated cost 
+Estimated delivery time 
+Taxes and additional charges 
+Step 4 — Confirm Booking
+User reviews quotation and confirms booking.
+Booking status:
+Pending
+6.3 Admin Workflow
+Admin receives booking request 
+Admin reviews booking details 
+Admin assigns driver 
+Booking status changes to: 
+Confirmed
+6.4 Driver Workflow
+Step 1 — Driver Login
+Driver logs in using OTP verification.
+Step 2 — View Assigned Orders
+Driver views:
+Today's bookings 
+Pickup/dropoff details 
+Customer information 
+Step 3 — Pickup Process
+Driver starts journey.
+Booking status:
+Out for Pickup
+At pickup:
+Driver uploads goods images 
+]Customer provides signature 
+Booking status:
+Pickup Completed
+Step 4 — Delivery Process
+Driver starts delivery.
+Booking status:
+Out for Dropoff
+At dropoff:
+Driver uploads delivery images 
+Customer provides signature 
+Booking status:
+Order Completed
+6.5 Notifications Workflow
+The customer receives push notifications for:
+Booking confirmation 
+Driver assignment 
+Pickup started 
+Pickup completed 
+Delivery started 
+Order completed 
+Notifications are sent using Firebase Cloud Messaging (FCM).
+6.6 Live Tracking Workflow
+The system tracks:
+Driver location 
+Delivery route 
+Current order status 
+Users can track orders live on Google Maps.
+Admin can also monitor all active deliveries.
+6.7 Smart Promotion Feature
+When a driver enters another city:
+System detects city location 
+Previous customers in that city are identified 
+Promotional notifications are sent 
+Example:
+“A driver is available in your area today. Book now and get special discount.”
+7. Booking Status Flow
+Pending↓Confirmed↓Out for Pickup↓Pickup Completed↓Out for Dropoff↓Order Completed
+8. Customer Mobile Application Screens
+Authentication
+Registration Screen 
+Login Screen 
+OTP Verification Screen 
+Main Navigation
+Home 
+Services 
+Orders 
+Profile 
+Home Screen
+Features:
+Promotions and banners 
+Quick booking option 
+User profile access 
+Deals and offers 
+Services Screen
+Features:
+Cargo categories 
+Service descriptions 
+Booking option 
+Book Order Screen
+Features:
+Category selection 
+Subcategory selection 
+Multiple item selection 
+Quantity and weight input 
+Pickup & Dropoff Screens
+Features:
+Pickup location input 
+Dropoff location input 
+Google Places integration 
+Quotation Screen
+Features:
+Distance 
+Estimated price 
+Estimated time 
+Service charges 
+Confirm booking button 
+Orders Screen
+Features:
+Current orders 
+Previous orders 
+Current orders navigate to:
+Tracking Screen 
+Previous orders navigate to:
+Order Detail Screen 
+Tracking Screen
+Features:
+Live Google Map 
+Driver details 
+Vehicle details 
+Status timeline 
+Order Detail Screen
+Features:
+Full booking details 
+Payment information 
+Delivery details 
+Profile Screen
+Features:
+User information 
+Total bookings 
+Edit profile 
+Logout 
+Payment Screen
+Features:
+Stripe integration 
+Online payment 
+Transaction confirmation 
+9. Driver Mobile Application Screens
+Authentication
+Login Screen 
+OTP Verification 
+Home Screen
+Features:
+Check-in slider 
+Booking overview 
+Driver availability status 
+Order List Screen
+Features:
+Assigned orders 
+Status labels 
+Pickup/dropoff addresses 
+Order Detail Screen
+Features:
+Customer details 
+Navigation support 
+Booking information 
+Status sliders 
+Pickup/Dropoff Image Screen
+Features:
+Upload images 
+Add delivery notes 
+Signature Screen
+Features:
+Customer signature capture 
+Success Screen
+Features:
+Order completion confirmation 
+10. Website Features
+Public Pages
+Home 
+About 
+Services 
+Customer Features
+OTP Authentication 
+Cargo booking 
+Order tracking 
+Order history 
+Payment integration 
+SEO Features
+Using Jasper:
+SEO optimization 
+Meta tags 
+Search engine indexing 
+11. Admin Panel Features
+Dashboard
+Features:
+Total bookings 
+Revenue analytics 
+Active deliveries 
+Driver statistics 
+Booking Management
+Admin can:
+View bookings 
+Edit bookings 
+Assign drivers 
+Update statuses 
+Driver Management
+Admin can:
+Add drivers 
+Activate/deactivate drivers 
+Monitor driver performance 
+Customer Management
+Admin can:
+View customer profiles 
+Track customer history 
+Manage support cases 
+Pricing Management
+Admin can manage:
+Distance pricing 
+Weight pricing 
+Traffic multipliers 
+Service charges 
+Promotions Management
+Admin can:
+Create discounts 
+Send promotional notifications 
+Reports & Analytics
+Reports include:
+Revenue reports 
+Booking reports 
+Driver reports 
+Customer reports 
+12. Database Modules
+Main database tables include:
+users 
+drivers 
+bookings 
+booking_items 
+quotations 
+payments 
+tracking_logs 
+notifications 
+uploaded_images 
+signatures 
+promotions 
+13. Realtime Features
+Using Supabase Realtime:
+Live tracking 
+Instant status updates 
+Realtime notifications 
+Live admin monitoring 
+14. Payment System
+The system will integrate Stripe for:
+Secure online payments 
+Payment confirmations 
+Transaction records 
+15. Security Features
+The platform will implement:
+OTP authentication 
+Secure APIs 
+Role-based access 
+Secure file uploads 
+Encrypted communication 
+Protected payment processing 
+16. Milestones & Timeline
+Total Duration
+3 Months (12 Weeks)
+Milestone 1 — Website UI Development
+Timeline
+Week 1
+Deliverables
+Responsive website UI 
+Home page 
+About page 
+Services page 
+Booking UI 
+Tracking UI 
+Orders UI 
+Payment UI 
+SEO-ready frontend 
+Milestone 2 — Admin Panel UI Development
+Timeline
+Week 2
+Deliverables
+Dashboard UI 
+Booking management UI 
+Driver management UI 
+Reports UI 
+Promotions UI 
+Milestone 3 — Backend Development
+Timeline
+Week 3 – Week 5
+Deliverables
+Database setup 
+Authentication system 
+Booking APIs 
+Quotation engine 
+Stripe integration 
+Notification system 
+Realtime services 
+Storage setup 
+Milestone 4 — Backend Integration (Website + Admin)
+Timeline
+Week 5 – Week 6
+Deliverables
+Website backend integration 
+Admin backend integration 
+Authentication integration 
+Booking workflows 
+Realtime data integration 
+Milestone 5 — Website Testing & Deployment
+Timeline
+Week 7
+Deliverables
+Bug fixing 
+Performance testing 
+Deployment setup 
+Production hosting 
+Milestone 6 — User Side Mobile App UI
+Timeline
+Week 8
+Deliverables
+User app frontend 
+Booking UI 
+Tracking UI 
+Profile UI 
+Payment UI 
+Milestone 7 — Provider/Driver Side Mobile App UI
+Timeline
+Week 9
+Deliverables
+Driver app frontend 
+Order management UI 
+Status update UI 
+Upload screens 
+Milestone 8 — User Side Backend Integration
+Timeline
+Week 10
+Deliverables
+API integration 
+Notifications 
+Realtime tracking 
+Payment integration 
+Milestone 9 — Provider Side Backend Integration
+Timeline
+Week 11
+Deliverables
+Driver workflow integration 
+Upload integration 
+Signature integration 
+Tracking integration 
+Milestone 10 — Final Testing & Deployment
+Timeline
+Week 12
+Deliverables
+Final testing 
+Performance optimization 
+Play Store deployment 
+App Store deployment 
+Production release 
+17. Testing Strategy
+Testing will include:
+Functional testing 
+UI/UX testing 
+API testing 
+Realtime testing 
+Payment testing 
+Device compatibility testing 
+Performance testing 
+18. Deployment
+The final deployment includes:
+Website hosting 
+Admin panel hosting 
+Android Play Store deployment 
+iOS App Store deployment 
+Backend production deployment 
+19. Final Deliverables
+The final deliverables include:
+Customer Platforms
+Customer Website 
+Customer Mobile App 
+Driver Platform
+Driver Mobile App 
+Admin Platform
+Admin Dashboard 
+Backend Infrastructure
+APIs 
+Database 
+Realtime services 
+Notifications 
+Integrations
+Stripe 
+Google Maps 
+Firebase 
+Deployment
+Production hosting 
+Play Store release 
+App Store release 

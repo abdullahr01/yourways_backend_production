@@ -44,7 +44,11 @@ class DriverController {
       }
 
       logger.success(`[SUCCESS] ✅ Driver login successful: ${result.driver.name}`);
-      successResponse(res, 200, 'Driver login successful', result.driver);
+      successResponse(res, 200, 'Driver login successful', {
+        driver: result.driver,
+        token: result.token,
+        tokenExpiry: '7 days',
+      });
     } catch (err) {
       logger.error(`[ERROR] ❌ Driver login failed: ${err.message}`);
       errorResponse(res, 400, 'Driver login failed', err);

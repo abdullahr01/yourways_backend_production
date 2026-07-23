@@ -19,7 +19,8 @@ class BookingController {
       
       const booking = await BookingService.createBooking(req.body);
       
-      logger.success(`✅ Booking created: ${booking._id}`);
+      logger.success(`✅ Booking created: ${booking.id}`);
+      logger.info(`[BOOKING CTRL] status=${booking.status} items=${booking.totalItems}`);
       return successResponse(res, 201, 'Booking created successfully', booking);
     } catch (err) {
       logger.error(`❌ Booking creation failed: ${err.message}`);

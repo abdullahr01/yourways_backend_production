@@ -1,47 +1,23 @@
 const express = require('express');
 const router = express.Router();
 const OrderController = require('../controllers/order_controller');
+const { requireAuth, optionalAuth } = require('../middleware/auth');
 const logger = require('../utils/logger');
 
-logger.info('[ROUTES] Order routes loaded: create, status, assign-driver, cancel');
+logger.info('[ROUTES] Order routes loaded (Supabase)');
 
-// Create order from booking
-router.post('/create-from-booking', OrderController.createFromBooking);
+router.post('/create-from-booking', requireAuth('user'), OrderController.createFromBooking);
+router.post('/create', requireAuth('user'), OrderController.create);
 
-// Create order directly
-router.post('/create', OrderController.create);
+router.get('/active', optionalAuth, OrderController.getActive);
+router.get('/user/:userId', requireAuth('user'), OrderController.getByUser);
+router.get('/code/:orderId', optionalAuth, OrderController.getByOrderId);
+router.get('/:id', optionalAuth, OrderController.getById);
 
-// Get all orders (with optional filters)
-router.get('/all', OrderController.getAll);
+router.put('/:id', requireAuth(['user', 'driver']), OrderController.update);
+router.patch('/:id/status', requireAuth(['user', 'driver']), OrderController.updateStatus);
+router.post('/:id/cancel', requireAuth('user'), OrderController.cancel);
 
-// Get active orders
-router.get('/active', OrderController.getActive);
-
-// Get orders by user
-router.get('/user/:userId', OrderController.getByUser);
-
-// Get order by orderId (ORD-XXX format)
-router.get('/code/:orderId', OrderController.getByOrderId);
-
-// Get single order by ID
-router.get('/:id', OrderController.getById);
-
-// Update order
-router.put('/:id', OrderController.update);
-
-// Update order status
-router.patch('/:id/status', OrderController.updateStatus);
-
-// Assign driver to order
-router.post('/:id/assign-driver', OrderController.assignDriver);
-
-// Update order pricing
-router.patch('/:id/pricing', OrderController.updatePricing);
-
-// Schedule pickup
-router.post('/:id/schedule-pickup', OrderController.schedulePickup);
-
-// Cancel order
-router.post('/:id/cancel', OrderController.cancel);
+// NOTE: list-all / assign-driver / pricing / schedule-pickup → /api/admin/orders
 
 module.exports = router;

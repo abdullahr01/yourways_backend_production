@@ -3,311 +3,218 @@ const PricingService = require('./pricing_service');
 const logger = require('../utils/logger');
 
 class BookingService {
-  /**
-   * Create a new booking (draft)
-   */
   async createBooking(bookingData) {
     try {
-      logger.info('Creating new booking...');
-      
-      const booking = new Booking(bookingData);
-      await booking.save();
-      
-      logger.success(`Booking created successfully with ID: ${booking._id}`);
-      logger.info(`Total items in booking: ${booking.totalItems}`);
-      
+      logger.info('[BOOKING SVC] Creating draft booking...');
+      logger.info(
+        `[BOOKING SVC] userId=${bookingData.userId} route=${bookingData.collectionPostcode}→${bookingData.deliveryPostcode}`
+      );
+
+      if (!bookingData.userId) throw new Error('userId is required');
+      if (!bookingData.collectionPostcode || !bookingData.deliveryPostcode) {
+        throw new Error('collectionPostcode and deliveryPostcode are required');
+      }
+      if (!bookingData.fullName || !bookingData.email || !bookingData.mobileNumber) {
+        throw new Error('fullName, email and mobileNumber are required');
+      }
+      if (bookingData.acceptTerms !== true) {
+        throw new Error('acceptTerms must be true');
+      }
+
+      const booking = await Booking.create({
+        ...bookingData,
+        status: 'draft',
+        items: bookingData.items || [],
+      });
+
+      logger.success(`[BOOKING SVC] Created id=${booking.id} items=${booking.totalItems}`);
       return booking;
     } catch (err) {
-      logger.error(`Error creating booking: ${err.message}`);
+      logger.error(`[BOOKING SVC] create failed: ${err.message}`);
       throw err;
     }
   }
 
-  /**
-   * Get booking by ID
-   */
   async getBookingById(bookingId) {
     try {
-      logger.info(`Fetching booking with ID: ${bookingId}`);
-      
-      const booking = await Booking.findById(bookingId)
-        .populate('userId', 'name email phone')
-        .populate('convertedOrderId');
-      
-      if (!booking) {
-        logger.warn(`Booking not found with ID: ${bookingId}`);
-        throw new Error('Booking not found');
-      }
-      
-      logger.success(`Booking fetched successfully: ${bookingId}`);
+      logger.info(`[BOOKING SVC] getById=${bookingId}`);
+      const booking = await Booking.findById(bookingId);
+      if (!booking) throw new Error('Booking not found');
+      logger.success(`[BOOKING SVC] Found booking status=${booking.status}`);
       return booking;
     } catch (err) {
-      logger.error(`Error fetching booking: ${err.message}`);
+      logger.error(`[BOOKING SVC] getById failed: ${err.message}`);
       throw err;
     }
   }
 
-  /**
-   * Get all bookings with optional filters
-   */
   async getAllBookings(filter = {}, limit = 100) {
     try {
-      logger.info('Fetching all bookings...');
-      logger.info(`Applied filters: ${JSON.stringify(filter)}`);
-      
-      const bookings = await Booking.find(filter)
-        .populate('userId', 'name email phone')
-        .sort({ createdAt: -1 })
-        .limit(limit);
-      
-      logger.success(`Fetched ${bookings.length} bookings`);
-      return bookings;
+      logger.info(`[BOOKING SVC] getAll filter=${JSON.stringify(filter)}`);
+      return await Booking.findMany(filter, limit);
     } catch (err) {
-      logger.error(`Error fetching bookings: ${err.message}`);
+      logger.error(`[BOOKING SVC] getAll failed: ${err.message}`);
       throw err;
     }
   }
 
-  /**
-   * Get bookings by user ID
-   */
   async getBookingsByUserId(userId, status = null) {
     try {
-      logger.info(`Fetching bookings for user: ${userId}`);
-      
+      logger.info(`[BOOKING SVC] getByUser userId=${userId} status=${status || 'any'}`);
       const filter = { userId };
-      if (status) {
-        filter.status = status;
-        logger.info(`Filtering by status: ${status}`);
-      }
-      
-      const bookings = await Booking.find(filter)
-        .sort({ createdAt: -1 });
-      
-      logger.success(`Fetched ${bookings.length} bookings for user ${userId}`);
-      return bookings;
+      if (status) filter.status = status;
+      return await Booking.findMany(filter);
     } catch (err) {
-      logger.error(`Error fetching user bookings: ${err.message}`);
+      logger.error(`[BOOKING SVC] getByUser failed: ${err.message}`);
       throw err;
     }
   }
 
-  /**
-   * Update booking
-   */
   async updateBooking(bookingId, updateData) {
     try {
-      logger.info(`Updating booking: ${bookingId}`);
-      logger.info(`Update data: ${JSON.stringify(updateData)}`);
-      
-      // Prevent updating if already submitted
-      const existingBooking = await Booking.findById(bookingId);
-      if (!existingBooking) {
-        logger.warn(`Booking not found: ${bookingId}`);
-        throw new Error('Booking not found');
+      logger.info(`[BOOKING SVC] update id=${bookingId}`);
+      const existing = await Booking.findById(bookingId);
+      if (!existing) throw new Error('Booking not found');
+
+      if (existing.status === 'submitted' || existing.status === 'converted_to_order') {
+        throw new Error(`Cannot update ${existing.status} booking`);
       }
-      
-      if (existingBooking.status === 'submitted' || existingBooking.status === 'converted_to_order') {
-        logger.warn(`Cannot update booking ${bookingId} - already ${existingBooking.status}`);
-        throw new Error(`Cannot update ${existingBooking.status} booking`);
-      }
-      
-      const booking = await Booking.findByIdAndUpdate(
-        bookingId,
-        updateData,
-        { new: true, runValidators: true }
-      );
-      
-      logger.success(`Booking updated successfully: ${bookingId}`);
+
+      const booking = await Booking.updateById(bookingId, updateData);
+      logger.success(`[BOOKING SVC] Updated id=${booking.id}`);
       return booking;
     } catch (err) {
-      logger.error(`Error updating booking: ${err.message}`);
+      logger.error(`[BOOKING SVC] update failed: ${err.message}`);
       throw err;
     }
   }
 
-  /**
-   * Add item to booking
-   */
   async addItemToBooking(bookingId, item) {
     try {
-      logger.info(`Adding item to booking: ${bookingId}`);
-      logger.info(`Item: ${item.itemName} x${item.quantity}`);
-      
+      logger.info(`[BOOKING SVC] addItem booking=${bookingId} item=${item?.itemName}`);
       const booking = await Booking.findById(bookingId);
-      if (!booking) {
-        throw new Error('Booking not found');
-      }
-      
-      if (booking.status !== 'draft') {
-        throw new Error('Cannot modify non-draft booking');
-      }
-      
-      booking.items.push(item);
-      await booking.save();
-      
-      logger.success(`Item added. Total items now: ${booking.totalItems}`);
-      return booking;
+      if (!booking) throw new Error('Booking not found');
+      if (booking.status !== 'draft') throw new Error('Cannot modify non-draft booking');
+
+      const items = [...(booking.items || []), item];
+      const updated = await Booking.updateById(bookingId, { items });
+      logger.success(`[BOOKING SVC] Item added. totalItems=${updated.totalItems}`);
+      return updated;
     } catch (err) {
-      logger.error(`Error adding item to booking: ${err.message}`);
+      logger.error(`[BOOKING SVC] addItem failed: ${err.message}`);
       throw err;
     }
   }
 
-  /**
-   * Remove item from booking
-   */
   async removeItemFromBooking(bookingId, itemId) {
     try {
-      logger.info(`Removing item ${itemId} from booking: ${bookingId}`);
-      
+      logger.info(`[BOOKING SVC] removeItem booking=${bookingId} itemId=${itemId}`);
       const booking = await Booking.findById(bookingId);
-      if (!booking) {
-        throw new Error('Booking not found');
-      }
-      
-      if (booking.status !== 'draft') {
-        throw new Error('Cannot modify non-draft booking');
-      }
-      
-      booking.items = booking.items.filter(item => item.itemId !== itemId);
-      await booking.save();
-      
-      logger.success(`Item removed. Total items now: ${booking.totalItems}`);
-      return booking;
+      if (!booking) throw new Error('Booking not found');
+      if (booking.status !== 'draft') throw new Error('Cannot modify non-draft booking');
+
+      const items = (booking.items || []).filter((i) => i.itemId !== itemId);
+      const updated = await Booking.updateById(bookingId, { items });
+      logger.success(`[BOOKING SVC] Item removed. totalItems=${updated.totalItems}`);
+      return updated;
     } catch (err) {
-      logger.error(`Error removing item from booking: ${err.message}`);
+      logger.error(`[BOOKING SVC] removeItem failed: ${err.message}`);
       throw err;
     }
   }
 
-  /**
-   * Update item quantity in booking
-   */
   async updateItemQuantity(bookingId, itemId, quantity) {
     try {
-      logger.info(`Updating item ${itemId} quantity to ${quantity} in booking: ${bookingId}`);
-      
+      logger.info(`[BOOKING SVC] updateQty booking=${bookingId} itemId=${itemId} qty=${quantity}`);
       const booking = await Booking.findById(bookingId);
-      if (!booking) {
-        throw new Error('Booking not found');
-      }
-      
-      if (booking.status !== 'draft') {
-        throw new Error('Cannot modify non-draft booking');
-      }
-      
-      const item = booking.items.find(i => i.itemId === itemId);
-      if (!item) {
-        throw new Error('Item not found in booking');
-      }
-      
-      item.quantity = quantity;
-      await booking.save();
-      
-      logger.success(`Item quantity updated. Total items now: ${booking.totalItems}`);
-      return booking;
+      if (!booking) throw new Error('Booking not found');
+      if (booking.status !== 'draft') throw new Error('Cannot modify non-draft booking');
+
+      const items = (booking.items || []).map((i) =>
+        i.itemId === itemId ? { ...i, quantity } : i
+      );
+      const found = items.find((i) => i.itemId === itemId);
+      if (!found) throw new Error('Item not found in booking');
+
+      const updated = await Booking.updateById(bookingId, { items });
+      logger.success(`[BOOKING SVC] Quantity updated. totalItems=${updated.totalItems}`);
+      return updated;
     } catch (err) {
-      logger.error(`Error updating item quantity: ${err.message}`);
+      logger.error(`[BOOKING SVC] updateQty failed: ${err.message}`);
       throw err;
     }
   }
 
-  /**
-   * Calculate and save quotation for a booking (YourWays doc Step 3)
-   */
   async calculatePrice(bookingId) {
     try {
-      logger.info(`[BOOKING] Calculating price for booking: ${bookingId}`);
-
+      logger.info(`[BOOKING SVC] calculatePrice id=${bookingId}`);
       const booking = await Booking.findById(bookingId);
-      if (!booking) {
-        throw new Error('Booking not found');
-      }
-
+      if (!booking) throw new Error('Booking not found');
       if (booking.status !== 'draft') {
         throw new Error('Price can only be calculated for draft bookings');
       }
 
-      const breakdown = PricingService.calculateQuotation(booking.toObject());
-      booking.calculatedPrice = breakdown.total;
-      booking.priceBreakdown = breakdown;
-      await booking.save();
+      const breakdown = PricingService.calculateQuotation(booking);
+      const updated = await Booking.updateById(bookingId, {
+        calculatedPrice: breakdown.total,
+        priceBreakdown: breakdown,
+      });
 
-      logger.success(`[BOOKING] Price calculated: £${breakdown.total} for booking ${bookingId}`);
-      return booking;
+      logger.success(`[BOOKING SVC] Price £${breakdown.total} saved for ${bookingId}`);
+      return updated;
     } catch (err) {
-      logger.error(`[BOOKING] Price calculation failed: ${err.message}`);
+      logger.error(`[BOOKING SVC] calculatePrice failed: ${err.message}`);
       throw err;
     }
   }
 
-  /**
-   * Submit booking (mark as submitted, ready for conversion to order)
-   */
   async submitBooking(bookingId) {
     try {
-      logger.info(`[BOOKING] Submitting booking: ${bookingId}`);
-
+      logger.info(`[BOOKING SVC] submit id=${bookingId}`);
       const booking = await Booking.findById(bookingId);
-      if (!booking) {
-        throw new Error('Booking not found');
-      }
-
-      if (booking.status !== 'draft') {
-        throw new Error('Only draft bookings can be submitted');
-      }
-
-      if (!booking.acceptTerms) {
-        throw new Error('Terms must be accepted before submission');
-      }
-
-      if (booking.items.length === 0) {
+      if (!booking) throw new Error('Booking not found');
+      if (booking.status !== 'draft') throw new Error('Only draft bookings can be submitted');
+      if (!booking.acceptTerms) throw new Error('Terms must be accepted before submission');
+      if (!booking.items || booking.items.length === 0) {
         throw new Error('Cannot submit booking without items');
       }
 
-      // Auto-calculate price if not done yet
-      if (!booking.calculatedPrice) {
-        logger.info('[BOOKING] No price yet — calculating before submit...');
-        const breakdown = PricingService.calculateQuotation(booking.toObject());
-        booking.calculatedPrice = breakdown.total;
-        booking.priceBreakdown = breakdown;
+      let calculatedPrice = booking.calculatedPrice;
+      let priceBreakdown = booking.priceBreakdown;
+
+      if (!calculatedPrice) {
+        logger.info('[BOOKING SVC] No price yet — calculating before submit...');
+        priceBreakdown = PricingService.calculateQuotation(booking);
+        calculatedPrice = priceBreakdown.total;
       }
 
-      booking.status = 'submitted';
-      booking.submittedAt = new Date();
-      await booking.save();
+      const updated = await Booking.updateById(bookingId, {
+        calculatedPrice,
+        priceBreakdown,
+        status: 'submitted',
+        submittedAt: new Date().toISOString(),
+      });
 
-      logger.success(`[BOOKING] Booking submitted: ${bookingId} (price: £${booking.calculatedPrice})`);
-      return booking;
+      logger.success(`[BOOKING SVC] Submitted id=${bookingId} price=£${calculatedPrice}`);
+      return updated;
     } catch (err) {
-      logger.error(`[BOOKING] Submit failed: ${err.message}`);
+      logger.error(`[BOOKING SVC] submit failed: ${err.message}`);
       throw err;
     }
   }
 
-  /**
-   * Delete booking (only drafts)
-   */
   async deleteBooking(bookingId) {
     try {
-      logger.info(`Deleting booking: ${bookingId}`);
-      
+      logger.info(`[BOOKING SVC] delete id=${bookingId}`);
       const booking = await Booking.findById(bookingId);
-      if (!booking) {
-        throw new Error('Booking not found');
-      }
-      
-      if (booking.status !== 'draft') {
-        throw new Error('Only draft bookings can be deleted');
-      }
-      
-      await Booking.findByIdAndDelete(bookingId);
-      
-      logger.success(`Booking deleted successfully: ${bookingId}`);
+      if (!booking) throw new Error('Booking not found');
+      if (booking.status !== 'draft') throw new Error('Only draft bookings can be deleted');
+
+      await Booking.deleteById(bookingId);
+      logger.success(`[BOOKING SVC] Deleted id=${bookingId}`);
       return { message: 'Booking deleted successfully' };
     } catch (err) {
-      logger.error(`Error deleting booking: ${err.message}`);
+      logger.error(`[BOOKING SVC] delete failed: ${err.message}`);
       throw err;
     }
   }

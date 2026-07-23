@@ -1,19 +1,19 @@
 const express = require('express');
 const router = express.Router();
 const UserController = require('../controllers/user_controller');
+const { requireAuth } = require('../middleware/auth');
 const logger = require('../utils/logger');
 
-logger.info('[ROUTES] User routes loaded: register, login, profile, verify-token');
+logger.info('[ROUTES] User routes loaded (Supabase + JWT)');
 
-// Public routes
+// Public
 router.post('/register', UserController.register);
 router.post('/login', UserController.login);
 
-// Protected routes (require token in headers)
-router.post('/verify-token', UserController.verifyToken);
-router.get('/profile', UserController.getProfile);
+// Protected (Bearer JWT, role=user)
+router.post('/verify-token', requireAuth('user'), UserController.verifyToken);
+router.get('/profile', requireAuth('user'), UserController.getProfile);
 
-// Admin route
-router.get('/all', UserController.getAll);
+// NOTE: list-all users moved to GET /api/admin/users
 
 module.exports = router;

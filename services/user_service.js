@@ -4,124 +4,99 @@ const logger = require('../utils/logger');
 class UserService {
   async registerUser(data) {
     try {
-      logger.info('[INFO] Starting user registration process...');
-      logger.info(`[INFO] Checking for existing user with phone: ${data.phone}`);
-      
-      const existing = await User.findOne({ phone: data.phone });
-      if (existing) {
-        logger.warn(`[WARN] Registration failed: User with phone ${data.phone} already exists`);
-        throw new Error('User already registered with this phone number.');
+      logger.info('[USER SVC] Starting registration...');
+      logger.info(`[USER SVC] phone=${data.phone} email=${data.email ? '***' : 'n/a'}`);
+
+      if (!data.name || !data.email || !data.phone) {
+        throw new Error('name, email and phone are required');
       }
 
-      logger.info('[INFO] Creating new user document...');
-      const user = new User(data);
-      await user.save();
-      logger.success(`[SUCCESS] User document saved to database with ID: ${user._id}`);
+      const existing = await User.findByEmailOrPhone({
+        email: data.email.toLowerCase(),
+        phone: data.phone,
+      });
+      if (existing) {
+        logger.warn(`[USER SVC] Duplicate user phone/email → id=${existing.id}`);
+        throw new Error('User already registered with this phone or email.');
+      }
 
-      logger.info('[INFO] Generating JWT token for new user...');
-      const token = user.generateAuthToken();
-      logger.success(`[SUCCESS] JWT token generated successfully for user: ${user._id}`);
-      logger.info(`[INFO] Token expiry: 7 days from now`);
+      const user = await User.create(data);
+      const token = User.generateAuthToken(user);
 
+      logger.success(`[USER SVC] Registered user id=${user.id}`);
       return { user, token };
     } catch (err) {
-      logger.error(`[ERROR] Register User Failed: ${err.message}`);
-      logger.error(`[ERROR] Stack trace: ${err.stack}`);
+      logger.error(`[USER SVC] Register failed: ${err.message}`);
       throw err;
     }
   }
 
   async loginUser(phone) {
     try {
-      logger.info(`[INFO] Login attempt initiated for phone: ${phone}`);
-      logger.info('[INFO] Searching user in database...');
-      
-      const user = await User.findOne({ phone });
-      
+      logger.info(`[USER SVC] Login attempt phone=${phone}`);
+
+      const user = await User.findByPhone(phone);
       if (!user) {
-        logger.warn(`[WARN] Login failed: No user found with phone: ${phone}`);
+        logger.warn(`[USER SVC] Login — user not found phone=${phone}`);
         throw new Error('User not found. Please register first.');
       }
 
-      logger.info(`[INFO] User found: ${user._id}`);
-      
       if (user.status === 'inactive') {
-        logger.warn(`[WARN] Login blocked: User ${user._id} has inactive status`);
+        logger.warn(`[USER SVC] Login blocked — inactive user id=${user.id}`);
         throw new Error('User account is inactive. Please contact support.');
       }
 
-      logger.info('[INFO] Generating JWT token for login...');
-      const token = user.generateAuthToken();
-      logger.success(`[SUCCESS] JWT token generated for user: ${user._id}`);
-      logger.success(`[SUCCESS] User login successful: ${phone}`);
-      logger.info(`[INFO] Token will expire in 7 days`);
-
+      const token = User.generateAuthToken(user);
+      logger.success(`[USER SVC] Login OK id=${user.id}`);
       return { user, token };
     } catch (err) {
-      logger.error(`[ERROR] Login User Failed: ${err.message}`);
-      logger.error(`[ERROR] Stack trace: ${err.stack}`);
+      logger.error(`[USER SVC] Login failed: ${err.message}`);
       throw err;
     }
   }
 
   async getAll() {
     try {
-      logger.info('[INFO] Fetching all users from database...');
-      const users = await User.find({});
-      logger.success(`[SUCCESS] Fetched ${users.length} users from database`);
-      logger.info(`[INFO] Active users: ${users.filter(u => u.status === 'active').length}`);
-      logger.info(`[INFO] Inactive users: ${users.filter(u => u.status === 'inactive').length}`);
+      logger.info('[USER SVC] Fetch all users');
+      const users = await User.findAll();
+      logger.success(`[USER SVC] Returned ${users.length} users`);
       return users;
     } catch (err) {
-      logger.error(`[ERROR] Fetch Users Failed: ${err.message}`);
-      logger.error(`[ERROR] Stack trace: ${err.stack}`);
+      logger.error(`[USER SVC] getAll failed: ${err.message}`);
       throw err;
     }
   }
 
   async verifyToken(token) {
     try {
-      logger.info('[INFO] Verifying JWT token...');
+      logger.info('[USER SVC] Verifying JWT...');
       const decoded = User.verifyToken(token);
-      logger.success(`[SUCCESS] Token verified successfully for user: ${decoded._id}`);
-      logger.info(`[INFO] Token belongs to: ${decoded.name} (${decoded.phone})`);
-      
-      logger.info('[INFO] Fetching user details from database...');
-      const user = await User.findById(decoded._id);
-      
+      logger.info(`[USER SVC] Token payload id=${decoded._id || decoded.id} role=${decoded.role}`);
+
+      const user = await User.findById(decoded._id || decoded.id);
       if (!user) {
-        logger.warn(`[WARN] Token valid but user ${decoded._id} not found in database`);
         throw new Error('User not found');
       }
-
       if (user.status === 'inactive') {
-        logger.warn(`[WARN] Token valid but user ${decoded._id} is inactive`);
         throw new Error('User account is inactive');
       }
 
-      logger.success(`[SUCCESS] Token verification complete for user: ${user._id}`);
+      logger.success(`[USER SVC] Token valid for user id=${user.id}`);
       return user;
     } catch (err) {
-      logger.error(`[ERROR] Token Verification Failed: ${err.message}`);
-      logger.error(`[ERROR] Stack trace: ${err.stack}`);
+      logger.error(`[USER SVC] verifyToken failed: ${err.message}`);
       throw err;
     }
   }
 
   async getUserById(userId) {
     try {
-      logger.info(`[INFO] Fetching user by ID: ${userId}`);
+      logger.info(`[USER SVC] getUserById=${userId}`);
       const user = await User.findById(userId);
-      
-      if (!user) {
-        logger.warn(`[WARN] User not found with ID: ${userId}`);
-        throw new Error('User not found');
-      }
-
-      logger.success(`[SUCCESS] User fetched: ${user.name} (${user.phone})`);
+      if (!user) throw new Error('User not found');
       return user;
     } catch (err) {
-      logger.error(`[ERROR] Get User By ID Failed: ${err.message}`);
+      logger.error(`[USER SVC] getUserById failed: ${err.message}`);
       throw err;
     }
   }

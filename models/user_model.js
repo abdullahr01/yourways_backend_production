@@ -1,56 +1,139 @@
-const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
+const supabase = require('../config/database');
 const logger = require('../utils/logger');
+const { handleSupabase, logPayload } = require('../utils/supabaseHelper');
+const { JWT_SECRET } = require('../middleware/auth');
+const { stripUndefined } = require('../utils/caseMapper');
 
-const userSchema = new mongoose.Schema(
-  {
-    name: { type: String, required: true, trim: true },
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-      lowercase: true,
-      match: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-    },
-    phone: { type: String, required: true, unique: true },
-    address: { type: String },
-    dob: { type: Date },
-    status: {
-      type: String,
-      enum: ['active', 'inactive'],
-      default: 'active',
-    },
-  },
-  { timestamps: true }
-);
+const TABLE = 'users';
 
-// Method to generate JWT token
-userSchema.methods.generateAuthToken = function() {
-  logger.info(`[USER MODEL] Generating token for user: ${this._id}`);
+/** Map DB row → API shape (camelCase + _id for Flutter compatibility) */
+const mapUser = (row) => {
+  if (!row) return null;
+  return {
+    _id: row.id,
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    phone: row.phone,
+    address: row.address ?? null,
+    dob: row.dob ?? null,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+};
+
+const toDbInsert = (data) =>
+  stripUndefined({
+    name: data.name,
+    email: data.email?.toLowerCase?.() ?? data.email,
+    phone: data.phone,
+    address: data.address,
+    dob: data.dob || null,
+    status: data.status || 'active',
+  });
+
+const toDbUpdate = (data) =>
+  stripUndefined({
+    name: data.name,
+    email: data.email !== undefined ? data.email?.toLowerCase?.() ?? data.email : undefined,
+    phone: data.phone,
+    address: data.address,
+    dob: data.dob,
+    status: data.status,
+  });
+
+const generateAuthToken = (user) => {
+  logger.info(`[USER MODEL] Generating JWT for user ${user.id || user._id}`);
   const token = jwt.sign(
-    { 
-      _id: this._id, 
-      phone: this.phone,
-      email: this.email,
-      name: this.name
+    {
+      _id: user.id || user._id,
+      id: user.id || user._id,
+      phone: user.phone,
+      email: user.email,
+      name: user.name,
+      role: 'user',
     },
-    process.env.JWT_SECRET || 'your-secret-key-change-this-in-production',
+    JWT_SECRET,
     { expiresIn: '7d' }
   );
+  logger.debug(`[USER MODEL] JWT issued (7d expiry)`);
   return token;
 };
 
-// Static method to verify JWT token
-userSchema.statics.verifyToken = function(token) {
+const verifyToken = (token) => {
   try {
-    const decoded = jwt.verify(
-      token, 
-      process.env.JWT_SECRET || 'your-secret-key-change-this-in-production'
-    );
-    return decoded;
-  } catch (err) {
+    return jwt.verify(token, JWT_SECRET);
+  } catch {
     throw new Error('Invalid or expired token');
   }
 };
 
-module.exports = mongoose.model('User', userSchema);
+const create = async (data) => {
+  logger.info(`[USER MODEL] INSERT → ${TABLE}`);
+  logPayload('user.create', data);
+  const payload = toDbInsert(data);
+
+  const result = await supabase.from(TABLE).insert(payload).select().single();
+  const row = handleSupabase('users.insert', result);
+  logger.success(`[USER MODEL] Created user id=${row.id} phone=${row.phone}`);
+  return mapUser(row);
+};
+
+const findByPhone = async (phone) => {
+  logger.info(`[USER MODEL] SELECT by phone=${phone}`);
+  const result = await supabase.from(TABLE).select('*').eq('phone', phone).maybeSingle();
+  const row = handleSupabase('users.findByPhone', result, { allowNull: true });
+  return mapUser(row);
+};
+
+const findById = async (id) => {
+  logger.info(`[USER MODEL] SELECT by id=${id}`);
+  const result = await supabase.from(TABLE).select('*').eq('id', id).maybeSingle();
+  const row = handleSupabase('users.findById', result, { allowNull: true });
+  return mapUser(row);
+};
+
+const findByEmailOrPhone = async ({ email, phone }) => {
+  logger.info(`[USER MODEL] SELECT existing email/phone`);
+  if (phone) {
+    const byPhone = await findByPhone(phone);
+    if (byPhone) return byPhone;
+  }
+  if (email) {
+    logger.info(`[USER MODEL] SELECT by email`);
+    const result = await supabase.from(TABLE).select('*').eq('email', email).maybeSingle();
+    const row = handleSupabase('users.findByEmail', result, { allowNull: true });
+    return mapUser(row);
+  }
+  return null;
+};
+
+const findAll = async () => {
+  logger.info(`[USER MODEL] SELECT all users`);
+  const result = await supabase.from(TABLE).select('*').order('created_at', { ascending: false });
+  const rows = handleSupabase('users.findAll', result);
+  logger.info(`[USER MODEL] Found ${rows.length} users`);
+  return rows.map(mapUser);
+};
+
+const updateById = async (id, data) => {
+  logger.info(`[USER MODEL] UPDATE id=${id}`);
+  logPayload('user.update', data);
+  const result = await supabase.from(TABLE).update(toDbUpdate(data)).eq('id', id).select().single();
+  const row = handleSupabase('users.update', result);
+  return mapUser(row);
+};
+
+module.exports = {
+  mapUser,
+  create,
+  findByPhone,
+  findById,
+  findByEmailOrPhone,
+  findAll,
+  updateById,
+  generateAuthToken,
+  verifyToken,
+};

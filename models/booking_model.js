@@ -1,148 +1,165 @@
-// booking_model.js
-const mongoose = require('mongoose');
+const supabase = require('../config/database');
 const logger = require('../utils/logger');
+const { handleSupabase, logPayload } = require('../utils/supabaseHelper');
+const { stripUndefined } = require('../utils/caseMapper');
 
-const bookingItemSchema = new mongoose.Schema({
-  itemId: { type: String, required: true },
-  category: { type: String, required: true },
-  itemName: { type: String, required: true },
-  quantity: { type: Number, default: 1, min: 1 },
-  modifiers: { type: Map, of: mongoose.Schema.Types.Mixed, default: {} }
-}, { _id: false });
+const TABLE = 'bookings';
 
-const bookingSchema = new mongoose.Schema(
-  {
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    
-    // Route and Timing
-    collectionPostcode: { type: String, required: true, trim: true },
-    deliveryPostcode: { type: String, required: true, trim: true },
-    moveDate: { type: Date },
-    dateFlexibility: { 
-      type: String, 
-      enum: ['Exact Date Only', 'Within 3 Days', 'Within a Week', 'Flexible'],
-      default: 'Exact Date Only' 
-    },
+const mapBooking = (row) => {
+  if (!row) return null;
+  const items = row.items || [];
+  const totalItems = items.reduce((sum, i) => sum + (i.quantity || 1), 0);
 
-    // Property Details
-    collectionPropertyType: { 
-      type: String, 
-      enum: ['House', 'Flat', 'Studio', 'Storage Unit', 'Office', 'Flatshare'],
-      default: 'House' 
-    },
-    deliveryPropertyType: { 
-      type: String, 
-      enum: ['House', 'Flat', 'Studio', 'Storage Unit', 'Office', 'Flatshare'],
-      default: 'House' 
-    },
-    collectionFloorLevel: { 
-      type: String, 
-      enum: ['Ground Floor', '1st Floor', '2nd Floor', '3rd Floor+', 'Basement'],
-      default: 'Ground Floor' 
-    },
-    deliveryFloorLevel: { 
-      type: String, 
-      enum: ['Ground Floor', '1st Floor', '2nd Floor', '3rd Floor+', 'Basement'],
-      default: 'Ground Floor' 
-    },
-    collectionLiftAccess: { type: Boolean, default: false },
-    deliveryLiftAccess: { type: Boolean, default: false },
-    parkingAccess: { 
-      type: String, 
-      enum: [
-        'Easy Access (Driveway/Loading Bay)', 
-        'Difficult Access (Permits/Long Carry)', 
-        'Street Parking', 
-        'Restricted Access', 
-        'No Parking Nearby'
-      ],
-      default: 'Easy Access (Driveway/Loading Bay)' 
-    },
+  return {
+    _id: row.id,
+    id: row.id,
+    userId: row.user_id,
+    collectionPostcode: row.collection_postcode,
+    deliveryPostcode: row.delivery_postcode,
+    moveDate: row.move_date,
+    dateFlexibility: row.date_flexibility,
+    collectionPropertyType: row.collection_property_type,
+    deliveryPropertyType: row.delivery_property_type,
+    collectionFloorLevel: row.collection_floor_level,
+    deliveryFloorLevel: row.delivery_floor_level,
+    collectionLiftAccess: row.collection_lift_access,
+    deliveryLiftAccess: row.delivery_lift_access,
+    parkingAccess: row.parking_access,
+    manpowerRequired: row.manpower_required,
+    dismantlingRequired: row.dismantling_required,
+    packingService: row.packing_service,
+    insuranceValue: row.insurance_value != null ? Number(row.insurance_value) : 0,
+    jobNotes: row.job_notes || '',
+    fullName: row.full_name,
+    email: row.email,
+    mobileNumber: row.mobile_number,
+    acceptTerms: row.accept_terms,
+    items,
+    calculatedPrice: row.calculated_price != null ? Number(row.calculated_price) : null,
+    priceBreakdown: row.price_breakdown,
+    status: row.status,
+    submittedAt: row.submitted_at,
+    convertedOrderId: row.converted_order_id,
+    meta: row.meta || {},
+    totalItems,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+};
 
-    // Service Level
-    manpowerRequired: { 
-      type: String, 
-      enum: ['1 Man (Driver Assisted)', '2 Man Team', '3 Man Team', '4+ Man Team'],
-      default: '2 Man Team' 
-    },
-    dismantlingRequired: { type: Boolean, default: false },
-    packingService: { 
-      type: String, 
-      enum: ['None', 'Materials Only', 'Fragile Items Only', 'Full Packing Service'],
-      default: 'None' 
-    },
-    insuranceValue: { type: Number, default: 0, min: 0 },
-    jobNotes: { type: String, trim: true, default: '' },
+const toDbInsert = (data) =>
+  stripUndefined({
+    user_id: data.userId || data.user_id,
+    collection_postcode: data.collectionPostcode || data.collection_postcode,
+    delivery_postcode: data.deliveryPostcode || data.delivery_postcode,
+    move_date: data.moveDate || data.move_date || null,
+    date_flexibility: data.dateFlexibility || data.date_flexibility,
+    collection_property_type: data.collectionPropertyType || data.collection_property_type,
+    delivery_property_type: data.deliveryPropertyType || data.delivery_property_type,
+    collection_floor_level: data.collectionFloorLevel || data.collection_floor_level,
+    delivery_floor_level: data.deliveryFloorLevel || data.delivery_floor_level,
+    collection_lift_access: data.collectionLiftAccess ?? data.collection_lift_access,
+    delivery_lift_access: data.deliveryLiftAccess ?? data.delivery_lift_access,
+    parking_access: data.parkingAccess || data.parking_access,
+    manpower_required: data.manpowerRequired || data.manpower_required,
+    dismantling_required: data.dismantlingRequired ?? data.dismantling_required,
+    packing_service: data.packingService || data.packing_service,
+    insurance_value: data.insuranceValue ?? data.insurance_value ?? 0,
+    job_notes: data.jobNotes ?? data.job_notes ?? '',
+    full_name: data.fullName || data.full_name,
+    email: (data.email || '').toLowerCase(),
+    mobile_number: data.mobileNumber || data.mobile_number,
+    accept_terms: data.acceptTerms ?? data.accept_terms,
+    items: data.items || [],
+    calculated_price: data.calculatedPrice ?? data.calculated_price ?? null,
+    price_breakdown: data.priceBreakdown ?? data.price_breakdown ?? null,
+    status: data.status || 'draft',
+    meta: data.meta || {},
+  });
 
-    // Contact Info
-    fullName: { type: String, required: true, trim: true },
-    email: { type: String, required: true, trim: true, lowercase: true },
-    mobileNumber: { type: String, required: true, trim: true },
-    acceptTerms: { type: Boolean, required: true },
+const toDbUpdate = (data) =>
+  stripUndefined({
+    user_id: data.userId ?? data.user_id,
+    collection_postcode: data.collectionPostcode ?? data.collection_postcode,
+    delivery_postcode: data.deliveryPostcode ?? data.delivery_postcode,
+    move_date: data.moveDate ?? data.move_date,
+    date_flexibility: data.dateFlexibility ?? data.date_flexibility,
+    collection_property_type: data.collectionPropertyType ?? data.collection_property_type,
+    delivery_property_type: data.deliveryPropertyType ?? data.delivery_property_type,
+    collection_floor_level: data.collectionFloorLevel ?? data.collection_floor_level,
+    delivery_floor_level: data.deliveryFloorLevel ?? data.delivery_floor_level,
+    collection_lift_access: data.collectionLiftAccess ?? data.collection_lift_access,
+    delivery_lift_access: data.deliveryLiftAccess ?? data.delivery_lift_access,
+    parking_access: data.parkingAccess ?? data.parking_access,
+    manpower_required: data.manpowerRequired ?? data.manpower_required,
+    dismantling_required: data.dismantlingRequired ?? data.dismantling_required,
+    packing_service: data.packingService ?? data.packing_service,
+    insurance_value: data.insuranceValue ?? data.insurance_value,
+    job_notes: data.jobNotes ?? data.job_notes,
+    full_name: data.fullName ?? data.full_name,
+    email: data.email !== undefined ? String(data.email).toLowerCase() : undefined,
+    mobile_number: data.mobileNumber ?? data.mobile_number,
+    accept_terms: data.acceptTerms ?? data.accept_terms,
+    items: data.items,
+    calculated_price: data.calculatedPrice ?? data.calculated_price,
+    price_breakdown: data.priceBreakdown ?? data.price_breakdown,
+    status: data.status,
+    submitted_at: data.submittedAt ?? data.submitted_at,
+    converted_order_id: data.convertedOrderId ?? data.converted_order_id,
+    meta: data.meta,
+  });
 
-    // Items List
-    items: [bookingItemSchema],
+const create = async (data) => {
+  logger.info(`[BOOKING MODEL] INSERT → ${TABLE}`);
+  logPayload('booking.create', data);
+  const result = await supabase.from(TABLE).insert(toDbInsert(data)).select().single();
+  const row = handleSupabase('bookings.insert', result);
+  logger.success(`[BOOKING MODEL] Created booking id=${row.id} status=${row.status}`);
+  return mapBooking(row);
+};
 
-    // Pricing Information (NEW)
-    calculatedPrice: { 
-      type: Number, 
-      default: null,
-      min: 0 
-    },
-    priceBreakdown: {
-      distanceMiles: { type: Number },
-      basePrice: { type: Number },
-      manpowerCost: { type: Number },
-      itemsCost: { type: Number },
-      floorCharge: { type: Number },
-      packingCost: { type: Number },
-      dismantlingCost: { type: Number },
-      insuranceCost: { type: Number },
-      parkingCharge: { type: Number },
-      subtotal: { type: Number },
-      vat: { type: Number },
-      total: { type: Number },
-      volumeDiscount: { type: Number }
-    },
+const findById = async (id) => {
+  logger.info(`[BOOKING MODEL] SELECT id=${id}`);
+  const result = await supabase.from(TABLE).select('*').eq('id', id).maybeSingle();
+  const row = handleSupabase('bookings.findById', result, { allowNull: true });
+  return mapBooking(row);
+};
 
-    // Metadata
-    status: { 
-      type: String, 
-      enum: ['draft', 'submitted', 'converted_to_order'],
-      default: 'draft' 
-    },
-    submittedAt: { type: Date },
-    convertedOrderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' },
+const findMany = async (filter = {}, limit = 100) => {
+  logger.info(`[BOOKING MODEL] SELECT many filter=${JSON.stringify(filter)} limit=${limit}`);
+  let query = supabase.from(TABLE).select('*').order('created_at', { ascending: false }).limit(limit);
 
-    meta: {
-      ip: String,
-      userAgent: String
-    }
-  },
-  { 
-    timestamps: true,
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true }
-  }
-);
+  if (filter.userId || filter.user_id) query = query.eq('user_id', filter.userId || filter.user_id);
+  if (filter.status) query = query.eq('status', filter.status);
 
-// Virtual for total items count
-bookingSchema.virtual('totalItems').get(function() {
-  return this.items.reduce((sum, item) => sum + item.quantity, 0);
-});
+  const result = await query;
+  const rows = handleSupabase('bookings.findMany', result);
+  logger.info(`[BOOKING MODEL] Found ${rows.length} bookings`);
+  return rows.map(mapBooking);
+};
 
-// Index for faster queries
-bookingSchema.index({ userId: 1, status: 1, createdAt: -1 });
+const updateById = async (id, data) => {
+  logger.info(`[BOOKING MODEL] UPDATE id=${id}`);
+  logPayload('booking.update', data);
+  const result = await supabase.from(TABLE).update(toDbUpdate(data)).eq('id', id).select().single();
+  const row = handleSupabase('bookings.update', result);
+  logger.info(`[BOOKING MODEL] Updated booking id=${row.id} status=${row.status}`);
+  return mapBooking(row);
+};
 
-// Pre-save validation: ensure price is set before submission
-bookingSchema.pre('save', function(next) {
-  if (this.isModified('status')) {
-    logger.info(`[BOOKING MODEL] Status -> ${this.status} (id: ${this._id || 'new'})`);
-  }
-  if (this.status === 'submitted' && !this.calculatedPrice) {
-    return next(new Error('Price must be calculated before submission'));
-  }
-  next();
-});
+const deleteById = async (id) => {
+  logger.info(`[BOOKING MODEL] DELETE id=${id}`);
+  const result = await supabase.from(TABLE).delete().eq('id', id).select().single();
+  handleSupabase('bookings.delete', result);
+  logger.success(`[BOOKING MODEL] Deleted booking id=${id}`);
+  return true;
+};
 
-module.exports = mongoose.model('Booking', bookingSchema);
+module.exports = {
+  mapBooking,
+  create,
+  findById,
+  findMany,
+  updateById,
+  deleteById,
+};

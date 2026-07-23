@@ -2,13 +2,16 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const morgan = require('morgan');
+const swaggerUi = require('swagger-ui-express');
 const logger = require('./utils/logger');
+const swaggerDefinition = require('./config/swagger');
 
 const userRoutes = require('./routes/user_router');
 const driverRoutes = require('./routes/driver_router');
 const orderRoutes = require('./routes/order_router');
 const bookingRoutes = require('./routes/booking_router');
 const serviceRoutes = require('./routes/service_router');
+const adminRoutes = require('./routes/admin_router');
 
 const app = express();
 
@@ -51,23 +54,37 @@ app.get('/', (req, res) => {
   logger.info('[APP] Health check hit');
   res.json({
     message: 'YourWays Logistics Backend API',
-    version: '1.0.0',
+    version: '1.1.0',
     status: 'running',
+    database: 'supabase',
+    auth: 'JWT Bearer (user | driver | admin)',
+    docs: 'http://localhost:5000/docs',
     endpoints: {
       users: '/api/users',
       drivers: '/api/drivers',
       bookings: '/api/bookings',
       orders: '/api/orders',
       services: '/api/services',
+      admin: '/api/admin',
     },
   });
 });
+
+// Swagger UI (same idea as FastAPI /docs)
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDefinition, {
+  customSiteTitle: 'YourWays Logistics API Docs',
+  swaggerOptions: {
+    persistAuthorization: true,
+  },
+}));
+logger.info('[APP] Swagger docs available at /docs');
 
 app.use('/api/users', userRoutes);
 app.use('/api/drivers', driverRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/services', serviceRoutes);
+app.use('/api/admin', adminRoutes);
 
 logger.info('[APP] All routes registered');
 

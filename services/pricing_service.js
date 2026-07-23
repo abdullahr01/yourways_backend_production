@@ -69,9 +69,11 @@ class PricingService {
   calculateItemsCost(items = []) {
     return items.reduce((sum, item) => {
       const qty = item.quantity || 1;
-      const weight = item.modifiers?.get?.('Estimated Weight (kg)')
-        ?? item.modifiers?.['Estimated Weight (kg)']
-        ?? 15;
+      const modifiers = item.modifiers || {};
+      const weight =
+        (typeof modifiers.get === 'function'
+          ? modifiers.get('Estimated Weight (kg)')
+          : modifiers['Estimated Weight (kg)']) ?? 15;
       return sum + qty * (5 + Number(weight) * 0.5);
     }, 0);
   }

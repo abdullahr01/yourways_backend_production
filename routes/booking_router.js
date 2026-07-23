@@ -1,41 +1,23 @@
 const express = require('express');
 const router = express.Router();
 const BookingController = require('../controllers/booking_controller');
+const { requireAuth, optionalAuth } = require('../middleware/auth');
 const logger = require('../utils/logger');
 
-logger.info('[ROUTES] Booking routes loaded: create, items, submit, calculate-price');
+logger.info('[ROUTES] Booking routes loaded (Supabase)');
 
-// Create new booking
-router.post('/create', BookingController.create);
+router.post('/create', requireAuth('user'), BookingController.create);
+router.get('/all', optionalAuth, BookingController.getAll);
+router.get('/user/:userId', requireAuth('user'), BookingController.getByUser);
+router.get('/:id', optionalAuth, BookingController.getById);
+router.put('/:id', requireAuth('user'), BookingController.update);
+router.delete('/:id', requireAuth('user'), BookingController.delete);
 
-// Get all bookings (with optional filters)
-router.get('/all', BookingController.getAll);
+router.post('/:id/items', requireAuth('user'), BookingController.addItem);
+router.delete('/:id/items/:itemId', requireAuth('user'), BookingController.removeItem);
+router.patch('/:id/items/:itemId/quantity', requireAuth('user'), BookingController.updateItemQuantity);
 
-// Get bookings by user
-router.get('/user/:userId', BookingController.getByUser);
-
-// Get single booking by ID
-router.get('/:id', BookingController.getById);
-
-// Update booking
-router.put('/:id', BookingController.update);
-
-// Delete booking (draft only)
-router.delete('/:id', BookingController.delete);
-
-// Add item to booking
-router.post('/:id/items', BookingController.addItem);
-
-// Remove item from booking
-router.delete('/:id/items/:itemId', BookingController.removeItem);
-
-// Update item quantity
-router.patch('/:id/items/:itemId/quantity', BookingController.updateItemQuantity);
-
-// Submit booking
-router.post('/:id/submit', BookingController.submit);
-
-// Calculate quotation price (YourWays doc Step 3)
-router.post('/:id/calculate-price', BookingController.calculatePrice);
+router.post('/:id/submit', requireAuth('user'), BookingController.submit);
+router.post('/:id/calculate-price', requireAuth('user'), BookingController.calculatePrice);
 
 module.exports = router;

@@ -1,23 +1,23 @@
-const mongoose = require('mongoose');
+const { createClient } = require('@supabase/supabase-js');
 const logger = require('../utils/logger');
 
-const connectDB = async () => {
-  try {
-    const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/logistics-app';
-    logger.info(`[DB] Connecting to MongoDB: ${mongoURI.replace(/\/\/.*@/, '//***@')}`);
+const url = process.env.SUPABASE_URL;
+const secretKey = process.env.SUPABASE_SECRET_KEY;
 
-    await mongoose.connect(mongoURI);
+if (!url || !secretKey) {
+  logger.error('[DB] Missing SUPABASE_URL or SUPABASE_SECRET_KEY in .env');
+  throw new Error('Supabase configuration missing');
+}
 
-    logger.success('[DB] Connected to MongoDB successfully');
-    logger.info(`[DB] Database: ${mongoose.connection.name}`);
-  } catch (error) {
-    logger.error(`[DB] MongoDB connection error: ${error.message}`);
-    process.exit(1);
-  }
-};
+logger.info(`[DB] Initializing Supabase client → ${url}`);
 
-mongoose.connection.on('disconnected', () => {
-  logger.warn('[DB] MongoDB disconnected');
+const supabase = createClient(url, secretKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+  },
 });
 
-module.exports = connectDB;
+logger.success('[DB] Supabase client ready (service role — RLS bypassed)');
+
+module.exports = supabase;
