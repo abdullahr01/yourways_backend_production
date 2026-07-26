@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Local docs / extracts (not for repo)
+postman/
+FRONTEND_INTEGRATION.md
+_yourways_extract.txt
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
