@@ -1,5 +1,6 @@
 const Booking = require('../models/booking_model');
 const PricingService = require('./pricing_service');
+const MapsService = require('./maps_service');
 const logger = require('../utils/logger');
 
 class BookingService {
@@ -21,8 +22,31 @@ class BookingService {
         throw new Error('acceptTerms must be true');
       }
 
+      // Prefer coordinates the client already has (Places Autocomplete pick,
+      // a dropped map pin, or "use my current location") — these are far more
+      // precise than a postcode centroid. Only geocode the postcode ourselves
+      // as a fallback when the client didn't send coordinates. Best-effort:
+      // never blocks booking creation if Google Maps is unreachable/missing.
+      const hasCoords = (c) => c && c.latitude != null && c.longitude != null;
+
+      const [collectionCoordinates, deliveryCoordinates] = await Promise.all([
+        hasCoords(bookingData.collectionCoordinates)
+          ? bookingData.collectionCoordinates
+          : MapsService.geocode(bookingData.collectionPostcode),
+        hasCoords(bookingData.deliveryCoordinates)
+          ? bookingData.deliveryCoordinates
+          : MapsService.geocode(bookingData.deliveryPostcode),
+      ]);
+
+      logger.info(
+        `[BOOKING SVC] Coordinates: collection=${hasCoords(bookingData.collectionCoordinates) ? 'client-supplied' : 'geocoded'} ` +
+          `delivery=${hasCoords(bookingData.deliveryCoordinates) ? 'client-supplied' : 'geocoded'}`
+      );
+
       const booking = await Booking.create({
         ...bookingData,
+        collectionCoordinates,
+        deliveryCoordinates,
         status: 'draft',
         items: bookingData.items || [],
       });
@@ -78,6 +102,32 @@ class BookingService {
 
       if (existing.status === 'submitted' || existing.status === 'converted_to_order') {
         throw new Error(`Cannot update ${existing.status} booking`);
+      }
+
+      // If the client sent coordinates directly (map pin / autocomplete pick),
+      // trust them as-is. Otherwise, re-geocode (best-effort) only if the
+      // postcode text itself changed.
+      const hasCoords = (c) => c && c.latitude != null && c.longitude != null;
+
+      if (!hasCoords(updateData.collectionCoordinates)) {
+        if (
+          updateData.collectionPostcode &&
+          updateData.collectionPostcode !== existing.collectionPostcode
+        ) {
+          updateData.collectionCoordinates = await MapsService.geocode(updateData.collectionPostcode);
+        } else {
+          delete updateData.collectionCoordinates;
+        }
+      }
+      if (!hasCoords(updateData.deliveryCoordinates)) {
+        if (
+          updateData.deliveryPostcode &&
+          updateData.deliveryPostcode !== existing.deliveryPostcode
+        ) {
+          updateData.deliveryCoordinates = await MapsService.geocode(updateData.deliveryPostcode);
+        } else {
+          delete updateData.deliveryCoordinates;
+        }
       }
 
       const booking = await Booking.updateById(bookingId, updateData);
@@ -154,7 +204,7 @@ class BookingService {
         throw new Error('Price can only be calculated for draft bookings');
       }
 
-      const breakdown = PricingService.calculateQuotation(booking);
+      const breakdown = await PricingService.calculateQuotation(booking);
       const updated = await Booking.updateById(bookingId, {
         calculatedPrice: breakdown.total,
         priceBreakdown: breakdown,
@@ -184,7 +234,7 @@ class BookingService {
 
       if (!calculatedPrice) {
         logger.info('[BOOKING SVC] No price yet — calculating before submit...');
-        priceBreakdown = PricingService.calculateQuotation(booking);
+        priceBreakdown = await PricingService.calculateQuotation(booking);
         calculatedPrice = priceBreakdown.total;
       }
 

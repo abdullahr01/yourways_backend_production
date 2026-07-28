@@ -2,8 +2,9 @@ const jwt = require('jsonwebtoken');
 const supabase = require('../config/database');
 const logger = require('../utils/logger');
 const { handleSupabase, logPayload } = require('../utils/supabaseHelper');
-const { JWT_SECRET } = require('../middleware/auth');
+const { JWT_SECRET, signToken } = require('../middleware/auth');
 const { stripUndefined } = require('../utils/caseMapper');
+const RevokedToken = require('./revoked_token_model');
 
 const TABLE = 'users';
 
@@ -46,28 +47,27 @@ const toDbUpdate = (data) =>
 
 const generateAuthToken = (user) => {
   logger.info(`[USER MODEL] Generating JWT for user ${user.id || user._id}`);
-  const token = jwt.sign(
-    {
-      _id: user.id || user._id,
-      id: user.id || user._id,
-      phone: user.phone,
-      email: user.email,
-      name: user.name,
-      role: 'user',
-    },
-    JWT_SECRET,
-    { expiresIn: '7d' }
-  );
-  logger.debug(`[USER MODEL] JWT issued (7d expiry)`);
-  return token;
+  return signToken({
+    _id: user.id || user._id,
+    id: user.id || user._id,
+    phone: user.phone,
+    email: user.email,
+    name: user.name,
+    role: 'user',
+  });
 };
 
-const verifyToken = (token) => {
+const verifyToken = async (token) => {
+  let decoded;
   try {
-    return jwt.verify(token, JWT_SECRET);
+    decoded = jwt.verify(token, JWT_SECRET);
   } catch {
     throw new Error('Invalid or expired token');
   }
+  if (decoded.jti && (await RevokedToken.exists(decoded.jti))) {
+    throw new Error('Token has been revoked. Please log in again.');
+  }
+  return decoded;
 };
 
 const create = async (data) => {

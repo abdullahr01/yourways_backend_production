@@ -1,6 +1,8 @@
 const Order = require('../models/order_model');
 const Booking = require('../models/booking_model');
 const Driver = require('../models/driver_model');
+const MapsService = require('./maps_service');
+const RealtimeService = require('./realtime_service');
 const logger = require('../utils/logger');
 const { formatOrder, formatOrders } = require('../utils/orderFormatter');
 
@@ -45,6 +47,9 @@ class OrderService {
         serviceName: additionalData.serviceName || 'Moving Service',
         pickupLocation: booking.collectionPostcode,
         deliveryLocation: booking.deliveryPostcode,
+        // Reuse coordinates already geocoded on the booking (avoids a second Google call).
+        pickupCoordinates: booking.collectionCoordinates,
+        deliveryCoordinates: booking.deliveryCoordinates,
         pickupDateTime: booking.moveDate,
         pickupPropertyType: booking.collectionPropertyType,
         deliveryPropertyType: booking.deliveryPropertyType,
@@ -93,11 +98,88 @@ class OrderService {
   async createOrder(orderData) {
     try {
       logger.info('[ORDER SVC] Direct create order...');
+
+      // Best-effort geocoding when coordinates aren't already supplied.
+      if (!orderData.pickupCoordinates && orderData.pickupLocation) {
+        orderData.pickupCoordinates = await MapsService.geocode(orderData.pickupLocation);
+      }
+      if (!orderData.deliveryCoordinates && orderData.deliveryLocation) {
+        orderData.deliveryCoordinates = await MapsService.geocode(orderData.deliveryLocation);
+      }
+
       const order = await Order.create(orderData);
       logger.success(`[ORDER SVC] Created ${order.orderId}`);
       return formatOrder(order);
     } catch (err) {
       logger.error(`[ORDER SVC] create failed: ${err.message}`);
+      throw err;
+    }
+  }
+
+  /**
+   * Live tracking payload for a single order (KB Section 9.5 inferred
+   * `/api/orders/:id/tracking` endpoint): current status, a status timeline,
+   * the assigned driver's last-known GPS position, and a live ETA computed
+   * via Google Distance Matrix from the driver's position to whichever
+   * destination is relevant to the current status.
+   */
+  async getOrderTracking(orderId) {
+    try {
+      logger.info(`[ORDER SVC] getTracking id=${orderId}`);
+      const order = await Order.findById(orderId);
+      if (!order) throw new Error('Order not found');
+
+      let driverLocation = null;
+      let eta = null;
+
+      if (order.driverId) {
+        const driver = await Driver.findById(order.driverId);
+        if (driver?.currentLocation?.latitude != null) {
+          driverLocation = driver.currentLocation;
+          const headingToDropoff = ['pickupCompleted', 'outForDropOff'].includes(order.status);
+          const destinationAddress = headingToDropoff ? order.deliveryLocation : order.pickupLocation;
+
+          eta = await MapsService.getEtaFromCoordinates(
+            driverLocation.latitude,
+            driverLocation.longitude,
+            destinationAddress
+          );
+        }
+      }
+
+      const timeline = [
+        { status: 'pending', label: 'Booking Confirmed', at: order.createdAt, done: true },
+        { status: 'confirmed', label: 'Driver Assigned', at: order.driverId ? order.updatedAt : null, done: Boolean(order.driverId) },
+        {
+          status: 'outForPickup',
+          label: 'Out for Pickup',
+          done: ['outForPickup', 'pickupCompleted', 'outForDropOff', 'completed'].includes(order.status),
+        },
+        { status: 'pickupCompleted', label: 'Pickup Completed', at: order.pickupCompletedAt, done: Boolean(order.pickupCompletedAt) },
+        {
+          status: 'outForDropOff',
+          label: 'Out for Dropoff',
+          done: ['outForDropOff', 'completed'].includes(order.status),
+        },
+        { status: 'completed', label: 'Order Completed', at: order.completedAt, done: order.status === 'completed' },
+      ];
+
+      logger.success(`[ORDER SVC] Tracking ready for ${order.orderId} status=${order.status}`);
+      return {
+        orderId: order.orderId,
+        status: order.status,
+        timeline,
+        driver: order.driver,
+        driverLocation,
+        eta,
+        pickupLocation: order.pickupLocation,
+        deliveryLocation: order.deliveryLocation,
+        pickupCoordinates: order.pickupCoordinates,
+        deliveryCoordinates: order.deliveryCoordinates,
+        realtimeChannel: `order-${order._id}`,
+      };
+    } catch (err) {
+      logger.error(`[ORDER SVC] getTracking failed: ${err.message}`);
       throw err;
     }
   }
@@ -177,6 +259,7 @@ class OrderService {
 
       const order = await Order.updateById(orderId, updateData);
       logger.success(`[ORDER SVC] ${order.orderId} → ${newStatus}`);
+      await RealtimeService.broadcastOrderUpdate(order);
       return formatOrder(order);
     } catch (err) {
       logger.error(`[ORDER SVC] updateStatus failed: ${err.message}`);
@@ -203,6 +286,7 @@ class OrderService {
 
       const order = await Order.updateById(orderId, updateData);
       logger.success(`[ORDER SVC] Driver ${driver.name} assigned to ${order.orderId}`);
+      await RealtimeService.broadcastOrderUpdate(order);
       return formatOrder(order);
     } catch (err) {
       logger.error(`[ORDER SVC] assignDriver failed: ${err.message}`);
@@ -239,6 +323,7 @@ class OrderService {
       });
 
       logger.success(`[ORDER SVC] Cancelled ${updated.orderId}`);
+      await RealtimeService.broadcastOrderUpdate(updated);
       return formatOrder(updated);
     } catch (err) {
       logger.error(`[ORDER SVC] cancel failed: ${err.message}`);
@@ -250,6 +335,7 @@ class OrderService {
     try {
       logger.info(`[ORDER SVC] update id=${orderId}`);
       const order = await Order.updateById(orderId, updateData);
+      await RealtimeService.broadcastOrderUpdate(order);
       return formatOrder(order);
     } catch (err) {
       logger.error(`[ORDER SVC] update failed: ${err.message}`);
@@ -264,6 +350,7 @@ class OrderService {
         pickupDateTime: new Date(pickupDateTime).toISOString(),
         status: 'pickupScheduled',
       });
+      await RealtimeService.broadcastOrderUpdate(order);
       return formatOrder(order);
     } catch (err) {
       logger.error(`[ORDER SVC] schedulePickup failed: ${err.message}`);

@@ -114,6 +114,23 @@ const swaggerDefinition = {
           mobileNumber: { type: 'string', example: '+447700900123' },
           acceptTerms: { type: 'boolean', example: true },
           manpowerRequired: { type: 'string', example: '2 Man Team' },
+          collectionCoordinates: {
+            type: 'object',
+            description:
+              'Optional — send if already known (Places Autocomplete pick, dropped map pin, or device GPS). Used as-is instead of geocoding the postcode when provided.',
+            properties: {
+              latitude: { type: 'number', example: 51.501009 },
+              longitude: { type: 'number', example: -0.1415876 },
+            },
+          },
+          deliveryCoordinates: {
+            type: 'object',
+            description: 'Optional — same behavior as collectionCoordinates.',
+            properties: {
+              latitude: { type: 'number', example: 51.5164 },
+              longitude: { type: 'number', example: -0.0703 },
+            },
+          },
           items: {
             type: 'array',
             items: {
@@ -230,6 +247,17 @@ const swaggerDefinition = {
         responses: {
           200: { description: 'Token valid' },
           401: { description: 'Invalid token' },
+        },
+      },
+    },
+    '/api/users/logout': {
+      post: {
+        tags: ['Users'],
+        summary: 'Logout (revokes current JWT)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: { description: 'Logged out' },
+          401: { description: 'Invalid/expired token' },
         },
       },
     },
@@ -409,6 +437,17 @@ const swaggerDefinition = {
           },
         },
         responses: { 200: { description: 'Delivery completed' } },
+      },
+    },
+    '/api/drivers/logout': {
+      post: {
+        tags: ['Drivers'],
+        summary: 'Logout (revokes current JWT, sets driver offline)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: { description: 'Logged out' },
+          401: { description: 'Invalid/expired token' },
+        },
       },
     },
     '/api/drivers/{id}/statistics': {
@@ -665,6 +704,16 @@ const swaggerDefinition = {
         responses: { 200: { description: 'Order' } },
       },
     },
+    '/api/orders/{id}/tracking': {
+      get: {
+        tags: ['Orders'],
+        summary: 'Live tracking: status timeline + driver GPS + ETA',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: { 200: { description: 'Tracking info' }, 404: { description: 'Order not found' } },
+      },
+    },
     '/api/orders/{id}/status': {
       patch: {
         tags: ['Orders'],
@@ -762,6 +811,17 @@ const swaggerDefinition = {
         summary: 'Admin profile',
         security: [{ bearerAuth: [] }],
         responses: { 200: { description: 'Profile' } },
+      },
+    },
+    '/api/admin/logout': {
+      post: {
+        tags: ['Admin'],
+        summary: 'Logout (revokes current JWT)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: { description: 'Logged out' },
+          401: { description: 'Invalid/expired token' },
+        },
       },
     },
     '/api/admin/dashboard': {
@@ -982,6 +1042,29 @@ const swaggerDefinition = {
           },
         },
         responses: { 200: { description: 'Cancelled' } },
+      },
+    },
+
+    // ——— Maps ———
+    '/api/maps/geocode': {
+      get: {
+        tags: ['Maps'],
+        summary: 'Address/postcode → lat/lng (Google Geocoding API proxy)',
+        parameters: [
+          { name: 'address', in: 'query', required: true, schema: { type: 'string', example: 'SW1A 1AA' } },
+        ],
+        responses: { 200: { description: 'Coordinates' }, 404: { description: 'Not resolvable' } },
+      },
+    },
+    '/api/maps/distance': {
+      get: {
+        tags: ['Maps'],
+        summary: 'Real distance + traffic-aware duration (Google Distance Matrix API proxy)',
+        parameters: [
+          { name: 'origin', in: 'query', required: true, schema: { type: 'string', example: 'SW1A 1AA' } },
+          { name: 'destination', in: 'query', required: true, schema: { type: 'string', example: 'E1 6AN' } },
+        ],
+        responses: { 200: { description: 'Distance + duration' } },
       },
     },
   },

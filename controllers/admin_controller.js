@@ -1,5 +1,6 @@
 const AdminService = require('../services/admin_service');
 const { successResponse, errorResponse } = require('../utils/responseHandler');
+const { revokeToken } = require('../middleware/auth');
 const logger = require('../utils/logger');
 
 class AdminController {
@@ -60,6 +61,18 @@ class AdminController {
     } catch (err) {
       logger.error(`[ADMIN CTRL] profile failed: ${err.message}`);
       return errorResponse(res, 404, 'Failed to fetch admin profile', err);
+    }
+  }
+
+  async logout(req, res) {
+    try {
+      logger.info(`[ADMIN CTRL] === LOGOUT === id=${req.auth?.id || req.auth?._id}`);
+      await revokeToken(req.auth);
+      logger.success(`[ADMIN CTRL] Logged out id=${req.auth?.id || req.auth?._id}`);
+      return successResponse(res, 200, 'Logged out successfully');
+    } catch (err) {
+      logger.error(`[ADMIN CTRL] logout failed: ${err.message}`);
+      return errorResponse(res, 400, 'Logout failed', err);
     }
   }
 

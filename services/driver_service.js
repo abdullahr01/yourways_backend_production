@@ -1,5 +1,6 @@
 const Driver = require('../models/driver_model');
 const Order = require('../models/order_model');
+const RealtimeService = require('./realtime_service');
 const logger = require('../utils/logger');
 const { formatOrder, formatOrders } = require('../utils/orderFormatter');
 
@@ -117,11 +118,13 @@ class DriverService {
   async goOnline(driverId) {
     try {
       logger.info(`[DRIVER SVC] goOnline id=${driverId}`);
-      return await Driver.updateById(driverId, {
+      const driver = await Driver.updateById(driverId, {
         isOnline: true,
         lastOnlineAt: new Date().toISOString(),
         status: 'active',
       });
+      await RealtimeService.broadcastDriverStatus(driverId, true);
+      return driver;
     } catch (err) {
       logger.error(`[DRIVER SVC] goOnline failed: ${err.message}`);
       throw err;
@@ -131,10 +134,12 @@ class DriverService {
   async goOffline(driverId) {
     try {
       logger.info(`[DRIVER SVC] goOffline id=${driverId}`);
-      return await Driver.updateById(driverId, {
+      const driver = await Driver.updateById(driverId, {
         isOnline: false,
         lastOnlineAt: new Date().toISOString(),
       });
+      await RealtimeService.broadcastDriverStatus(driverId, false);
+      return driver;
     } catch (err) {
       logger.error(`[DRIVER SVC] goOffline failed: ${err.message}`);
       throw err;
@@ -144,7 +149,14 @@ class DriverService {
   async updateLocation(driverId, latitude, longitude) {
     try {
       logger.info(`[DRIVER SVC] updateLocation id=${driverId} ${latitude},${longitude}`);
-      return await Driver.updateLocation(driverId, latitude, longitude);
+      const driver = await Driver.updateLocation(driverId, latitude, longitude);
+      // Supabase Realtime broadcast — live tracking for customer app + admin map (KB Section 16).
+      await RealtimeService.broadcastDriverLocation(driverId, {
+        latitude,
+        longitude,
+        updatedAt: driver.currentLocation?.lastUpdated,
+      });
+      return driver;
     } catch (err) {
       logger.error(`[DRIVER SVC] updateLocation failed: ${err.message}`);
       throw err;
@@ -207,6 +219,7 @@ class DriverService {
 
       const updated = await Order.updateById(orderId, updateData);
       logger.success(`[DRIVER SVC] Order ${updated.orderId} → ${newStatus}`);
+      await RealtimeService.broadcastOrderUpdate(updated);
       return formatOrder(updated);
     } catch (err) {
       logger.error(`[DRIVER SVC] updateOrderStatus failed: ${err.message}`);

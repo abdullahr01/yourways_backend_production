@@ -208,6 +208,9 @@ class BookingController {
       logger.success(`[BOOKING CTRL] Price calculated: £${booking.calculatedPrice}`);
       return successResponse(res, 200, 'Price calculated successfully', {
         calculatedPrice: booking.calculatedPrice,
+        standardPrice: booking.priceBreakdown?.standardTotal,
+        discountAmount: booking.priceBreakdown?.discountAmount,
+        discountPercentage: booking.priceBreakdown?.discountPercentage,
         priceBreakdown: booking.priceBreakdown,
         estimatedDeliveryHours: booking.priceBreakdown?.estimatedDeliveryHours,
         booking,

@@ -1,6 +1,7 @@
 // controllers/driver_controller.js
 const DriverService = require('../services/driver_service');
 const { successResponse, errorResponse } = require('../utils/responseHandler');
+const { revokeToken } = require('../middleware/auth');
 const logger = require('../utils/logger');
 
 class DriverController {
@@ -52,6 +53,27 @@ class DriverController {
     } catch (err) {
       logger.error(`[ERROR] ❌ Driver login failed: ${err.message}`);
       errorResponse(res, 400, 'Driver login failed', err);
+    }
+  }
+
+  async logout(req, res) {
+    try {
+      const driverId = req.auth?.id || req.auth?._id;
+      logger.info(`[DRIVER CTRL] === LOGOUT === id=${driverId}`);
+
+      await revokeToken(req.auth);
+
+      try {
+        await DriverService.goOffline(driverId);
+      } catch (offlineErr) {
+        logger.warn(`[DRIVER CTRL] go-offline on logout failed (non-blocking): ${offlineErr.message}`);
+      }
+
+      logger.success(`[DRIVER CTRL] Logged out id=${driverId}`);
+      successResponse(res, 200, 'Logged out successfully');
+    } catch (err) {
+      logger.error(`[DRIVER CTRL] logout failed: ${err.message}`);
+      errorResponse(res, 400, 'Logout failed', err);
     }
   }
 

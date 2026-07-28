@@ -46,6 +46,14 @@ const mapOrder = (row) => {
     status: row.status,
     pickupLocation: row.pickup_location,
     deliveryLocation: row.delivery_location,
+    pickupCoordinates:
+      row.pickup_latitude != null
+        ? { latitude: Number(row.pickup_latitude), longitude: Number(row.pickup_longitude) }
+        : null,
+    deliveryCoordinates:
+      row.delivery_latitude != null
+        ? { latitude: Number(row.delivery_latitude), longitude: Number(row.delivery_longitude) }
+        : null,
     pickupDateTime: row.pickup_datetime,
     deliveryDateTime: row.delivery_datetime,
     pickupCompletedAt: row.pickup_completed_at,
@@ -99,6 +107,10 @@ const toDbInsert = (data) =>
     status: data.status || 'pending',
     pickup_location: data.pickupLocation || data.pickup_location,
     delivery_location: data.deliveryLocation || data.delivery_location,
+    pickup_latitude: data.pickupCoordinates?.latitude ?? data.pickup_latitude ?? null,
+    pickup_longitude: data.pickupCoordinates?.longitude ?? data.pickup_longitude ?? null,
+    delivery_latitude: data.deliveryCoordinates?.latitude ?? data.delivery_latitude ?? null,
+    delivery_longitude: data.deliveryCoordinates?.longitude ?? data.delivery_longitude ?? null,
     pickup_datetime: data.pickupDateTime || data.pickup_datetime || null,
     delivery_datetime: data.deliveryDateTime || data.delivery_datetime || null,
     pickup_property_type: data.pickupPropertyType || data.pickup_property_type,
@@ -143,6 +155,10 @@ const toDbUpdate = (data) => {
     status: data.status,
     pickup_location: data.pickupLocation ?? data.pickup_location,
     delivery_location: data.deliveryLocation ?? data.delivery_location,
+    pickup_latitude: data.pickupCoordinates?.latitude ?? data.pickup_latitude,
+    pickup_longitude: data.pickupCoordinates?.longitude ?? data.pickup_longitude,
+    delivery_latitude: data.deliveryCoordinates?.latitude ?? data.delivery_latitude,
+    delivery_longitude: data.deliveryCoordinates?.longitude ?? data.delivery_longitude,
     pickup_datetime: data.pickupDateTime ?? data.pickup_datetime,
     delivery_datetime: data.deliveryDateTime ?? data.delivery_datetime,
     pickup_completed_at: data.pickupCompletedAt ?? data.pickup_completed_at,

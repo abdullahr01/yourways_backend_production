@@ -54,10 +54,13 @@ class ServiceController {
       logger.info('[SERVICE] Quick quote request received');
       logger.info(`[SERVICE] Quote route: ${req.body.collectionPostcode} -> ${req.body.deliveryPostcode}, items: ${req.body.items?.length || 0}`);
 
-      const breakdown = PricingService.calculateQuotation(req.body);
+      const breakdown = await PricingService.calculateQuotation(req.body);
 
       return successResponse(res, 200, 'Quotation calculated successfully', {
         estimatedCost: breakdown.total,
+        standardCost: breakdown.standardTotal,
+        discountAmount: breakdown.discountAmount,
+        discountPercentage: breakdown.discountPercentage,
         estimatedDeliveryHours: breakdown.estimatedDeliveryHours,
         taxesAndCharges: breakdown.vat,
         priceBreakdown: breakdown,

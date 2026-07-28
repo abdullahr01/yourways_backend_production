@@ -14,6 +14,7 @@ router.post('/login', AdminController.login);
 router.use(requireAuth('admin'));
 
 router.get('/profile', AdminController.getProfile);
+router.post('/logout', AdminController.logout);
 router.get('/dashboard', AdminController.dashboard);
 
 // Users

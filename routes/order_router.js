@@ -12,6 +12,7 @@ router.post('/create', requireAuth('user'), OrderController.create);
 router.get('/active', optionalAuth, OrderController.getActive);
 router.get('/user/:userId', requireAuth('user'), OrderController.getByUser);
 router.get('/code/:orderId', optionalAuth, OrderController.getByOrderId);
+router.get('/:id/tracking', optionalAuth, OrderController.getTracking);
 router.get('/:id', optionalAuth, OrderController.getById);
 
 router.put('/:id', requireAuth(['user', 'driver']), OrderController.update);

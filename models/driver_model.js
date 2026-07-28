@@ -1,8 +1,7 @@
-const jwt = require('jsonwebtoken');
 const supabase = require('../config/database');
 const logger = require('../utils/logger');
 const { handleSupabase, logPayload } = require('../utils/supabaseHelper');
-const { JWT_SECRET } = require('../middleware/auth');
+const { signToken } = require('../middleware/auth');
 const { stripUndefined } = require('../utils/caseMapper');
 
 const TABLE = 'drivers';
@@ -76,18 +75,14 @@ const toDbUpdate = (data) =>
 
 const generateAuthToken = (driver) => {
   logger.info(`[DRIVER MODEL] Generating JWT for driver ${driver.id || driver._id}`);
-  return jwt.sign(
-    {
-      _id: driver.id || driver._id,
-      id: driver.id || driver._id,
-      phone: driver.phone,
-      email: driver.email,
-      name: driver.name,
-      role: 'driver',
-    },
-    JWT_SECRET,
-    { expiresIn: '7d' }
-  );
+  return signToken({
+    _id: driver.id || driver._id,
+    id: driver.id || driver._id,
+    phone: driver.phone,
+    email: driver.email,
+    name: driver.name,
+    role: 'driver',
+  });
 };
 
 const create = async (data) => {

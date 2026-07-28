@@ -70,7 +70,7 @@ class UserService {
   async verifyToken(token) {
     try {
       logger.info('[USER SVC] Verifying JWT...');
-      const decoded = User.verifyToken(token);
+      const decoded = await User.verifyToken(token);
       logger.info(`[USER SVC] Token payload id=${decoded._id || decoded.id} role=${decoded.role}`);
 
       const user = await User.findById(decoded._id || decoded.id);

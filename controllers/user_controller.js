@@ -1,5 +1,6 @@
 const UserService = require('../services/user_service');
 const { successResponse, errorResponse } = require('../utils/responseHandler');
+const { revokeToken } = require('../middleware/auth');
 const logger = require('../utils/logger');
 
 class UserController {
@@ -139,6 +140,18 @@ class UserController {
     } catch (err) {
       logger.error(`[USER CTRL] getProfile failed: ${err.message}`);
       return errorResponse(res, 401, 'Failed to fetch profile', err);
+    }
+  }
+
+  async logout(req, res) {
+    try {
+      logger.info(`[USER CTRL] === LOGOUT === id=${req.auth?.id || req.auth?._id}`);
+      await revokeToken(req.auth);
+      logger.success(`[USER CTRL] Logged out id=${req.auth?.id || req.auth?._id}`);
+      return successResponse(res, 200, 'Logged out successfully');
+    } catch (err) {
+      logger.error(`[USER CTRL] logout failed: ${err.message}`);
+      return errorResponse(res, 400, 'Logout failed', err);
     }
   }
 }

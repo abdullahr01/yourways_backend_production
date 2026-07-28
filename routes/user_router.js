@@ -13,6 +13,7 @@ router.post('/login', UserController.login);
 // Protected (Bearer JWT, role=user)
 router.post('/verify-token', requireAuth('user'), UserController.verifyToken);
 router.get('/profile', requireAuth('user'), UserController.getProfile);
+router.post('/logout', requireAuth('user'), UserController.logout);
 
 // NOTE: list-all users moved to GET /api/admin/users
 

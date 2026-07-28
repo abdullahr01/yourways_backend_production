@@ -158,6 +158,24 @@ class OrderController {
   }
 
   /**
+   * Live tracking (status timeline + driver position + ETA)
+   * GET /api/orders/:id/tracking
+   */
+  async getTracking(req, res) {
+    try {
+      logger.info(`📍 Fetching tracking info: ${req.params.id}`);
+
+      const tracking = await OrderService.getOrderTracking(req.params.id);
+
+      logger.success(`✅ Tracking retrieved: ${tracking.orderId}`);
+      return successResponse(res, 200, 'Tracking info fetched successfully', tracking);
+    } catch (err) {
+      logger.error(`❌ Get tracking failed: ${err.message}`);
+      return errorResponse(res, 404, 'Tracking info not found', err.message);
+    }
+  }
+
+  /**
    * Update order status
    * PATCH /api/orders/:id/status
    */

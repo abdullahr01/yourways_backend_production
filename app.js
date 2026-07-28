@@ -12,6 +12,7 @@ const orderRoutes = require('./routes/order_router');
 const bookingRoutes = require('./routes/booking_router');
 const serviceRoutes = require('./routes/service_router');
 const adminRoutes = require('./routes/admin_router');
+const mapsRoutes = require('./routes/maps_router');
 
 const app = express();
 
@@ -67,7 +68,9 @@ app.get('/', (req, res) => {
       orders: '/api/orders',
       services: '/api/services',
       admin: '/api/admin',
+      maps: '/api/maps',
     },
+    realtime: 'Supabase Realtime broadcast channels: driver-<id> (location/status), order-<id> (update)',
   });
 });
 
@@ -86,6 +89,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/maps', mapsRoutes);
 
 logger.info('[APP] All routes registered');
 

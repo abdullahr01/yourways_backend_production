@@ -9,6 +9,7 @@ logger.info('[ROUTES] Driver routes loaded (Supabase + JWT)');
 // Public auth
 router.post('/register', DriverController.register);
 router.post('/login', DriverController.login);
+router.post('/logout', requireAuth('driver'), DriverController.logout);
 
 // Driver self endpoints
 router.get('/:id', DriverController.getById);

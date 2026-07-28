@@ -1,9 +1,8 @@
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const supabase = require('../config/database');
 const logger = require('../utils/logger');
 const { handleSupabase, logPayload } = require('../utils/supabaseHelper');
-const { JWT_SECRET } = require('../middleware/auth');
+const { signToken } = require('../middleware/auth');
 const { stripUndefined } = require('../utils/caseMapper');
 
 const TABLE = 'admins';
@@ -30,17 +29,13 @@ const mapAdmin = (row, { includeSensitive = false } = {}) => {
 
 const generateAuthToken = (admin) => {
   logger.info(`[ADMIN MODEL] Generating JWT for admin ${admin.id}`);
-  return jwt.sign(
-    {
-      _id: admin.id,
-      id: admin.id,
-      email: admin.email,
-      name: admin.name,
-      role: 'admin',
-    },
-    JWT_SECRET,
-    { expiresIn: '7d' }
-  );
+  return signToken({
+    _id: admin.id,
+    id: admin.id,
+    email: admin.email,
+    name: admin.name,
+    role: 'admin',
+  });
 };
 
 const hashPassword = async (password) => {

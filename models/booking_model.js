@@ -16,6 +16,14 @@ const mapBooking = (row) => {
     userId: row.user_id,
     collectionPostcode: row.collection_postcode,
     deliveryPostcode: row.delivery_postcode,
+    collectionCoordinates:
+      row.collection_latitude != null
+        ? { latitude: Number(row.collection_latitude), longitude: Number(row.collection_longitude) }
+        : null,
+    deliveryCoordinates:
+      row.delivery_latitude != null
+        ? { latitude: Number(row.delivery_latitude), longitude: Number(row.delivery_longitude) }
+        : null,
     moveDate: row.move_date,
     dateFlexibility: row.date_flexibility,
     collectionPropertyType: row.collection_property_type,
@@ -52,6 +60,10 @@ const toDbInsert = (data) =>
     user_id: data.userId || data.user_id,
     collection_postcode: data.collectionPostcode || data.collection_postcode,
     delivery_postcode: data.deliveryPostcode || data.delivery_postcode,
+    collection_latitude: data.collectionCoordinates?.latitude ?? data.collection_latitude ?? null,
+    collection_longitude: data.collectionCoordinates?.longitude ?? data.collection_longitude ?? null,
+    delivery_latitude: data.deliveryCoordinates?.latitude ?? data.delivery_latitude ?? null,
+    delivery_longitude: data.deliveryCoordinates?.longitude ?? data.delivery_longitude ?? null,
     move_date: data.moveDate || data.move_date || null,
     date_flexibility: data.dateFlexibility || data.date_flexibility,
     collection_property_type: data.collectionPropertyType || data.collection_property_type,
@@ -82,6 +94,10 @@ const toDbUpdate = (data) =>
     user_id: data.userId ?? data.user_id,
     collection_postcode: data.collectionPostcode ?? data.collection_postcode,
     delivery_postcode: data.deliveryPostcode ?? data.delivery_postcode,
+    collection_latitude: data.collectionCoordinates?.latitude ?? data.collection_latitude,
+    collection_longitude: data.collectionCoordinates?.longitude ?? data.collection_longitude,
+    delivery_latitude: data.deliveryCoordinates?.latitude ?? data.delivery_latitude,
+    delivery_longitude: data.deliveryCoordinates?.longitude ?? data.delivery_longitude,
     move_date: data.moveDate ?? data.move_date,
     date_flexibility: data.dateFlexibility ?? data.date_flexibility,
     collection_property_type: data.collectionPropertyType ?? data.collection_property_type,
