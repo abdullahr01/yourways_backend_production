@@ -178,17 +178,24 @@ class BookingController {
   }
 
   /**
-   * Submit booking
+   * Submit booking — locks the price AND immediately converts it into an
+   * order in the same request. Response contains both the finalized booking
+   * (status: converted_to_order) and the newly created order (status:
+   * pending) so the frontend can go straight to the order/tracking screen
+   * using `data.order.orderId` — no separate "create order" call needed.
    * POST /api/bookings/:id/submit
    */
   async submit(req, res) {
     try {
       logger.info(`📤 Submitting booking: ${req.params.id}`);
-      
-      const booking = await BookingService.submitBooking(req.params.id);
-      
-      logger.success(`✅ Booking submitted: ${req.params.id}`);
-      return successResponse(res, 200, 'Booking submitted successfully', booking);
+
+      const { booking, order } = await BookingService.submitBooking(req.params.id);
+
+      logger.success(`✅ Booking submitted & order created: ${req.params.id} → ${order.orderId}`);
+      return successResponse(res, 201, 'Booking submitted and order created successfully', {
+        booking,
+        order,
+      });
     } catch (err) {
       logger.error(`❌ Booking submission failed: ${err.message}`);
       return errorResponse(res, 400, 'Booking submission failed', err.message);

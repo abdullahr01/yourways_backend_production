@@ -1622,7 +1622,8 @@ Request:
 
 | Endpoint | Method | Auth | Purpose |
 |---|---|---|---|
-| `/api/orders/create-from-booking` | POST | Bearer `user` | Convert a `submitted` booking into a `pending` order |
+| `/api/bookings/:id/submit` | POST | Bearer `user` | **Updated:** now submits the booking AND converts it into a `pending` order in the same call — returns `{ booking, order }` |
+| `/api/orders/create-from-booking` | POST | Bearer `user` | ⚠️ Retry/fallback only (not part of the normal flow) — recovers a booking stuck at `submitted` if the order-creation half of `submit` failed |
 | `/api/orders/create` | POST | Bearer `user` | Direct order creation (bypassing booking draft) |
 | `/api/orders/user/:userId` | GET | Bearer `user` | Order history |
 | `/api/orders/active` | GET | Optional (`?userId=`) | Active orders |

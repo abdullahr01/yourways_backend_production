@@ -617,12 +617,36 @@ const swaggerDefinition = {
     '/api/bookings/{id}/submit': {
       post: {
         tags: ['Bookings'],
-        summary: 'Submit booking',
+        summary: 'Submit booking (also creates the order)',
+        description:
+          'Locks the booking price (status: draft → submitted) AND immediately converts it into an order (status: pending) in the same request. Response contains both `booking` (now converted_to_order) and `order` (the new job, with its `orderId`) — no separate "create order" call is needed.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
         ],
-        responses: { 200: { description: 'Submitted' } },
+        responses: {
+          201: {
+            description: 'Booking submitted and order created',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string', example: 'Booking submitted and order created successfully' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        booking: { type: 'object', description: 'Booking, status: converted_to_order' },
+                        order: { type: 'object', description: 'Newly created order, status: pending' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     },
 
@@ -630,7 +654,9 @@ const swaggerDefinition = {
     '/api/orders/create-from-booking': {
       post: {
         tags: ['Orders'],
-        summary: 'Convert submitted booking → order',
+        summary: '[Retry/fallback only] Convert submitted booking → order',
+        description:
+          'Not part of the normal flow — POST /api/bookings/{id}/submit now creates the order automatically. Use this only to recover a booking stuck at status "submitted" whose order-creation step failed on the first attempt. Safe to retry: throws if the booking was already converted.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,

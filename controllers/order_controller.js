@@ -4,12 +4,15 @@ const logger = require('../utils/logger');
 
 class OrderController {
   /**
-   * Create order from booking
+   * Create order from booking — RETRY/FALLBACK ONLY. The normal flow is
+   * `POST /api/bookings/:id/submit`, which now creates the order itself.
+   * Use this only to recover a booking stuck at status 'submitted' whose
+   * order-creation step failed the first time.
    * POST /api/orders/create-from-booking
    */
   async createFromBooking(req, res) {
     try {
-      logger.info('🚚 Order creation from booking request received');
+      logger.info('🚚 Order creation from booking request received (retry/fallback path)');
       
       const { bookingId, serviceName, totalPrice, quotedPrice } = req.body;
       

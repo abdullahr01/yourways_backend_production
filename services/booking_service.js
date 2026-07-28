@@ -1,6 +1,10 @@
 const Booking = require('../models/booking_model');
 const PricingService = require('./pricing_service');
 const MapsService = require('./maps_service');
+// order_service.js only requires models (not this service), so requiring it
+// here creates no circular-import cycle — needed so submitBooking can
+// immediately convert the freshly-submitted booking into an order.
+const OrderService = require('./order_service');
 const logger = require('../utils/logger');
 
 class BookingService {
@@ -218,6 +222,17 @@ class BookingService {
     }
   }
 
+  /**
+   * Submit a draft booking AND immediately convert it into an order in the
+   * same call. This replaces the old two-endpoint flow
+   * (`POST /bookings/:id/submit` then `POST /orders/create-from-booking`) —
+   * the frontend always called them back-to-back with no logic in between,
+   * so they're now merged into a single request from the client's point of
+   * view. Internally this is still two sequential writes (bookings row →
+   * submitted/converted_to_order, orders row → pending), reusing
+   * `OrderService.createOrderFromBooking` so the order-creation logic (field
+   * mapping, coordinate reuse, order code generation) isn't duplicated.
+   */
   async submitBooking(bookingId) {
     try {
       logger.info(`[BOOKING SVC] submit id=${bookingId}`);
@@ -238,7 +253,7 @@ class BookingService {
         calculatedPrice = priceBreakdown.total;
       }
 
-      const updated = await Booking.updateById(bookingId, {
+      await Booking.updateById(bookingId, {
         calculatedPrice,
         priceBreakdown,
         status: 'submitted',
@@ -246,7 +261,16 @@ class BookingService {
       });
 
       logger.success(`[BOOKING SVC] Submitted id=${bookingId} price=£${calculatedPrice}`);
-      return updated;
+
+      logger.info(`[BOOKING SVC] Auto-converting submitted booking ${bookingId} into an order...`);
+      const order = await OrderService.createOrderFromBooking(bookingId);
+      const finalBooking = await Booking.findById(bookingId);
+
+      logger.success(
+        `[BOOKING SVC] Booking ${bookingId} converted → order ${order.orderId} (price £${calculatedPrice})`
+      );
+
+      return { booking: finalBooking, order };
     } catch (err) {
       logger.error(`[BOOKING SVC] submit failed: ${err.message}`);
       throw err;
