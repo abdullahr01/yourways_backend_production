@@ -14,8 +14,15 @@ const mapBooking = (row) => {
     _id: row.id,
     id: row.id,
     userId: row.user_id,
+    collectionAddress: row.collection_address,
+    deliveryAddress: row.delivery_address,
     collectionPostcode: row.collection_postcode,
     deliveryPostcode: row.delivery_postcode,
+    // Google's canonical, cleaned-up address (from Geocoding API) — preferred
+    // over the raw customer-typed collectionAddress/postcode when available,
+    // since it's normalized and less error-prone (see order_service.js).
+    collectionFormattedAddress: row.collection_formatted_address || null,
+    deliveryFormattedAddress: row.delivery_formatted_address || null,
     collectionCoordinates:
       row.collection_latitude != null
         ? { latitude: Number(row.collection_latitude), longitude: Number(row.collection_longitude) }
@@ -58,8 +65,14 @@ const mapBooking = (row) => {
 const toDbInsert = (data) =>
   stripUndefined({
     user_id: data.userId || data.user_id,
+    collection_address: data.collectionAddress || data.collection_address,
+    delivery_address: data.deliveryAddress || data.delivery_address,
     collection_postcode: data.collectionPostcode || data.collection_postcode,
     delivery_postcode: data.deliveryPostcode || data.delivery_postcode,
+    collection_formatted_address:
+      data.collectionFormattedAddress ?? data.collection_formatted_address ?? null,
+    delivery_formatted_address:
+      data.deliveryFormattedAddress ?? data.delivery_formatted_address ?? null,
     collection_latitude: data.collectionCoordinates?.latitude ?? data.collection_latitude ?? null,
     collection_longitude: data.collectionCoordinates?.longitude ?? data.collection_longitude ?? null,
     delivery_latitude: data.deliveryCoordinates?.latitude ?? data.delivery_latitude ?? null,
@@ -92,8 +105,14 @@ const toDbInsert = (data) =>
 const toDbUpdate = (data) =>
   stripUndefined({
     user_id: data.userId ?? data.user_id,
+    collection_address: data.collectionAddress ?? data.collection_address,
+    delivery_address: data.deliveryAddress ?? data.delivery_address,
     collection_postcode: data.collectionPostcode ?? data.collection_postcode,
     delivery_postcode: data.deliveryPostcode ?? data.delivery_postcode,
+    collection_formatted_address:
+      data.collectionFormattedAddress ?? data.collection_formatted_address,
+    delivery_formatted_address:
+      data.deliveryFormattedAddress ?? data.delivery_formatted_address,
     collection_latitude: data.collectionCoordinates?.latitude ?? data.collection_latitude,
     collection_longitude: data.collectionCoordinates?.longitude ?? data.collection_longitude,
     delivery_latitude: data.deliveryCoordinates?.latitude ?? data.delivery_latitude,

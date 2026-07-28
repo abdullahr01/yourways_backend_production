@@ -98,7 +98,9 @@ const swaggerDefinition = {
         type: 'object',
         required: [
           'userId',
+          'collectionAddress',
           'collectionPostcode',
+          'deliveryAddress',
           'deliveryPostcode',
           'fullName',
           'email',
@@ -107,7 +109,14 @@ const swaggerDefinition = {
         ],
         properties: {
           userId: { type: 'string', format: 'uuid' },
+          collectionAddress: {
+            type: 'string',
+            example: '42 Baker Street, Flat 4',
+            description:
+              'Required — real street address (house/flat + street). A postcode alone cannot identify a specific building for the driver.',
+          },
           collectionPostcode: { type: 'string', example: 'SW1A 1AA' },
+          deliveryAddress: { type: 'string', example: '10 Downing Street' },
           deliveryPostcode: { type: 'string', example: 'E1 6AN' },
           fullName: { type: 'string', example: 'Ali Khan' },
           email: { type: 'string', example: 'ali@example.com' },
@@ -117,7 +126,7 @@ const swaggerDefinition = {
           collectionCoordinates: {
             type: 'object',
             description:
-              'Optional — send if already known (Places Autocomplete pick, dropped map pin, or device GPS). Used as-is instead of geocoding the postcode when provided.',
+              'Optional — send if already known (Places Autocomplete pick, dropped map pin, or device GPS). Used as-is instead of geocoding the address when provided.',
             properties: {
               latitude: { type: 'number', example: 51.501009 },
               longitude: { type: 'number', example: -0.1415876 },

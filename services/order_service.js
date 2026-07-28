@@ -41,12 +41,25 @@ class OrderService {
         throw new Error('Booking already converted to order');
       }
 
+      // The driver must see a real, actionable address — never a bare
+      // postcode. Prefer Google's canonical formatted address (captured at
+      // booking time, see booking_service.js#createBooking); fall back to the
+      // customer-typed address line + postcode if geocoding wasn't available.
+      const pickupLocation =
+        booking.collectionFormattedAddress || `${booking.collectionAddress}, ${booking.collectionPostcode}`;
+      const deliveryLocation =
+        booking.deliveryFormattedAddress || `${booking.deliveryAddress}, ${booking.deliveryPostcode}`;
+
       const orderData = {
         userId: booking.userId,
         bookingId: booking.id,
         serviceName: additionalData.serviceName || 'Moving Service',
-        pickupLocation: booking.collectionPostcode,
-        deliveryLocation: booking.deliveryPostcode,
+        pickupLocation,
+        deliveryLocation,
+        pickupAddressLine: booking.collectionAddress,
+        pickupPostcode: booking.collectionPostcode,
+        deliveryAddressLine: booking.deliveryAddress,
+        deliveryPostcode: booking.deliveryPostcode,
         // Reuse coordinates already geocoded on the booking (avoids a second Google call).
         pickupCoordinates: booking.collectionCoordinates,
         deliveryCoordinates: booking.deliveryCoordinates,
@@ -174,6 +187,10 @@ class OrderService {
         eta,
         pickupLocation: order.pickupLocation,
         deliveryLocation: order.deliveryLocation,
+        pickupAddressLine: order.pickupAddressLine,
+        pickupPostcode: order.pickupPostcode,
+        deliveryAddressLine: order.deliveryAddressLine,
+        deliveryPostcode: order.deliveryPostcode,
         pickupCoordinates: order.pickupCoordinates,
         deliveryCoordinates: order.deliveryCoordinates,
         realtimeChannel: `order-${order._id}`,

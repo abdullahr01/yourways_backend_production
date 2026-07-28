@@ -46,6 +46,12 @@ const mapOrder = (row) => {
     status: row.status,
     pickupLocation: row.pickup_location,
     deliveryLocation: row.delivery_location,
+    // Structured pieces of the same address, for driver-app UIs that want to
+    // render "Address" / "Postcode" as separate lines instead of one string.
+    pickupAddressLine: row.pickup_address_line,
+    pickupPostcode: row.pickup_postcode,
+    deliveryAddressLine: row.delivery_address_line,
+    deliveryPostcode: row.delivery_postcode,
     pickupCoordinates:
       row.pickup_latitude != null
         ? { latitude: Number(row.pickup_latitude), longitude: Number(row.pickup_longitude) }
@@ -107,6 +113,10 @@ const toDbInsert = (data) =>
     status: data.status || 'pending',
     pickup_location: data.pickupLocation || data.pickup_location,
     delivery_location: data.deliveryLocation || data.delivery_location,
+    pickup_address_line: data.pickupAddressLine || data.pickup_address_line || null,
+    pickup_postcode: data.pickupPostcode || data.pickup_postcode || null,
+    delivery_address_line: data.deliveryAddressLine || data.delivery_address_line || null,
+    delivery_postcode: data.deliveryPostcode || data.delivery_postcode || null,
     pickup_latitude: data.pickupCoordinates?.latitude ?? data.pickup_latitude ?? null,
     pickup_longitude: data.pickupCoordinates?.longitude ?? data.pickup_longitude ?? null,
     delivery_latitude: data.deliveryCoordinates?.latitude ?? data.delivery_latitude ?? null,
@@ -155,6 +165,10 @@ const toDbUpdate = (data) => {
     status: data.status,
     pickup_location: data.pickupLocation ?? data.pickup_location,
     delivery_location: data.deliveryLocation ?? data.delivery_location,
+    pickup_address_line: data.pickupAddressLine ?? data.pickup_address_line,
+    pickup_postcode: data.pickupPostcode ?? data.pickup_postcode,
+    delivery_address_line: data.deliveryAddressLine ?? data.delivery_address_line,
+    delivery_postcode: data.deliveryPostcode ?? data.delivery_postcode,
     pickup_latitude: data.pickupCoordinates?.latitude ?? data.pickup_latitude,
     pickup_longitude: data.pickupCoordinates?.longitude ?? data.pickup_longitude,
     delivery_latitude: data.deliveryCoordinates?.latitude ?? data.delivery_latitude,

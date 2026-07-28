@@ -19,6 +19,13 @@ class BookingService {
       if (!bookingData.collectionPostcode || !bookingData.deliveryPostcode) {
         throw new Error('collectionPostcode and deliveryPostcode are required');
       }
+      // A postcode alone is NOT a usable pickup/delivery location — it cannot
+      // tell a driver which house/flat to go to. A full street address is
+      // mandatory so `orders.pickupLocation`/`deliveryLocation` (what the
+      // driver actually sees) is a real, actionable address.
+      if (!bookingData.collectionAddress || !bookingData.deliveryAddress) {
+        throw new Error('collectionAddress and deliveryAddress are required');
+      }
       if (!bookingData.fullName || !bookingData.email || !bookingData.mobileNumber) {
         throw new Error('fullName, email and mobileNumber are required');
       }
@@ -28,19 +35,27 @@ class BookingService {
 
       // Prefer coordinates the client already has (Places Autocomplete pick,
       // a dropped map pin, or "use my current location") — these are far more
-      // precise than a postcode centroid. Only geocode the postcode ourselves
-      // as a fallback when the client didn't send coordinates. Best-effort:
-      // never blocks booking creation if Google Maps is unreachable/missing.
+      // precise than a postcode centroid. Only geocode ourselves as a fallback
+      // when the client didn't send coordinates — and when we do geocode,
+      // search using the FULL address (not just the postcode) for a pin that
+      // points at the actual building, not just the postcode's rough centroid.
+      // Best-effort: never blocks booking creation if Google Maps is
+      // unreachable/missing.
       const hasCoords = (c) => c && c.latitude != null && c.longitude != null;
+      const fullCollectionAddress = `${bookingData.collectionAddress}, ${bookingData.collectionPostcode}`;
+      const fullDeliveryAddress = `${bookingData.deliveryAddress}, ${bookingData.deliveryPostcode}`;
 
-      const [collectionCoordinates, deliveryCoordinates] = await Promise.all([
-        hasCoords(bookingData.collectionCoordinates)
-          ? bookingData.collectionCoordinates
-          : MapsService.geocode(bookingData.collectionPostcode),
-        hasCoords(bookingData.deliveryCoordinates)
-          ? bookingData.deliveryCoordinates
-          : MapsService.geocode(bookingData.deliveryPostcode),
+      const [collectionGeocode, deliveryGeocode] = await Promise.all([
+        hasCoords(bookingData.collectionCoordinates) ? null : MapsService.geocode(fullCollectionAddress),
+        hasCoords(bookingData.deliveryCoordinates) ? null : MapsService.geocode(fullDeliveryAddress),
       ]);
+
+      const collectionCoordinates = hasCoords(bookingData.collectionCoordinates)
+        ? bookingData.collectionCoordinates
+        : collectionGeocode;
+      const deliveryCoordinates = hasCoords(bookingData.deliveryCoordinates)
+        ? bookingData.deliveryCoordinates
+        : deliveryGeocode;
 
       logger.info(
         `[BOOKING SVC] Coordinates: collection=${hasCoords(bookingData.collectionCoordinates) ? 'client-supplied' : 'geocoded'} ` +
@@ -51,6 +66,12 @@ class BookingService {
         ...bookingData,
         collectionCoordinates,
         deliveryCoordinates,
+        // Google's canonical formatted address (previously computed then
+        // silently thrown away) — stored so the order created from this
+        // booking can show the driver a clean, complete address instead of a
+        // bare postcode.
+        collectionFormattedAddress: collectionGeocode?.formattedAddress || null,
+        deliveryFormattedAddress: deliveryGeocode?.formattedAddress || null,
         status: 'draft',
         items: bookingData.items || [],
       });
@@ -109,26 +130,34 @@ class BookingService {
       }
 
       // If the client sent coordinates directly (map pin / autocomplete pick),
-      // trust them as-is. Otherwise, re-geocode (best-effort) only if the
-      // postcode text itself changed.
+      // trust them as-is. Otherwise, re-geocode (best-effort) using the full
+      // address only if the address line or postcode text actually changed.
       const hasCoords = (c) => c && c.latitude != null && c.longitude != null;
 
       if (!hasCoords(updateData.collectionCoordinates)) {
-        if (
-          updateData.collectionPostcode &&
-          updateData.collectionPostcode !== existing.collectionPostcode
-        ) {
-          updateData.collectionCoordinates = await MapsService.geocode(updateData.collectionPostcode);
+        const addressChanged =
+          (updateData.collectionAddress && updateData.collectionAddress !== existing.collectionAddress) ||
+          (updateData.collectionPostcode && updateData.collectionPostcode !== existing.collectionPostcode);
+        if (addressChanged) {
+          const address = updateData.collectionAddress ?? existing.collectionAddress;
+          const postcode = updateData.collectionPostcode ?? existing.collectionPostcode;
+          const geocode = await MapsService.geocode(`${address}, ${postcode}`);
+          updateData.collectionCoordinates = geocode;
+          updateData.collectionFormattedAddress = geocode?.formattedAddress || null;
         } else {
           delete updateData.collectionCoordinates;
         }
       }
       if (!hasCoords(updateData.deliveryCoordinates)) {
-        if (
-          updateData.deliveryPostcode &&
-          updateData.deliveryPostcode !== existing.deliveryPostcode
-        ) {
-          updateData.deliveryCoordinates = await MapsService.geocode(updateData.deliveryPostcode);
+        const addressChanged =
+          (updateData.deliveryAddress && updateData.deliveryAddress !== existing.deliveryAddress) ||
+          (updateData.deliveryPostcode && updateData.deliveryPostcode !== existing.deliveryPostcode);
+        if (addressChanged) {
+          const address = updateData.deliveryAddress ?? existing.deliveryAddress;
+          const postcode = updateData.deliveryPostcode ?? existing.deliveryPostcode;
+          const geocode = await MapsService.geocode(`${address}, ${postcode}`);
+          updateData.deliveryCoordinates = geocode;
+          updateData.deliveryFormattedAddress = geocode?.formattedAddress || null;
         } else {
           delete updateData.deliveryCoordinates;
         }

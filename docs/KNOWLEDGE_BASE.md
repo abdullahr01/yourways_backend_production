@@ -1600,6 +1600,7 @@ Request:
 | Field | Type | Required | Validation |
 |---|---|---|---|
 | `userId` | UUID | ✅ | Must match caller's JWT id |
+| `collectionAddress` / `deliveryAddress` | string | ✅ | 🔧 IMPLEMENTED (`sql/004_add_address_lines.sql`) — non-empty street address (house/flat + street); a postcode alone is rejected as a location since it can't tell a driver which building to go to |
 | `collectionPostcode` / `deliveryPostcode` | string | ✅ | Non-empty; 💡 inferred: should validate against UK postcode regex or Google Places place_id |
 | `moveDate` | ISO-8601 datetime | 💡 recommended | Must not be in the past |
 | `dateFlexibility` | enum | ✅ | One of `Exact Date Only`, `Within 3 Days`, `Within a Week`, `Flexible` |
@@ -1814,8 +1815,12 @@ erDiagram
     BOOKINGS {
         uuid id PK
         uuid user_id FK
+        text collection_address
         text collection_postcode
+        text collection_formatted_address
+        text delivery_address
         text delivery_postcode
+        text delivery_formatted_address
         timestamptz move_date
         enum date_flexibility
         enum collection_property_type
@@ -1850,7 +1855,11 @@ erDiagram
         text service_name
         enum status
         text pickup_location
+        text pickup_address_line
+        text pickup_postcode
         text delivery_location
+        text delivery_address_line
+        text delivery_postcode
         timestamptz pickup_datetime
         timestamptz delivery_datetime
         timestamptz pickup_completed_at
@@ -1871,6 +1880,8 @@ erDiagram
         text cancellation_reason
     }
 ```
+
+> ✅ **RESOLVED GAP (previously flagged in this section):** `bookings` originally only stored a **postcode** for collection/delivery — no house/flat/street-level address. When converted to an `order`, `pickup_location`/`delivery_location` (the fields shown to the driver) ended up containing just the bare postcode, which is not an actionable location. Fixed in `sql/004_add_address_lines.sql`: `bookings` now requires `collection_address`/`delivery_address` (real street address text) alongside the postcode, and captures Google's `collection_formatted_address`/`delivery_formatted_address` (previously computed by `maps_service.js#geocode()` then silently discarded). `orders.pickup_location`/`delivery_location` are now built from the full formatted address (falling back to `address + postcode`) instead of the postcode alone, with structured `pickup_address_line`/`pickup_postcode`/`delivery_address_line`/`delivery_postcode` columns added for driver-app UIs that want them separately.
 
 ### 10.4 Normalization Analysis
 
@@ -2854,6 +2865,7 @@ Also relevant to compliance: notification opt-out/preferences (Section 5.5, 11.6
 | Field | Rule |
 |---|---|
 | `userId` | Required, valid UUID, must exist, must match caller's JWT identity |
+| `collectionAddress` / `deliveryAddress` | 🔧 IMPLEMENTED — required, non-empty street address string (house/flat number + street name). Enforced because a postcode alone cannot identify a specific building for the driver. |
 | `collectionPostcode` / `deliveryPostcode` | Required, non-empty string; 💡 inferred: validate against UK postcode format `^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$` (case-insensitive) or accept a Google Places `place_id` instead of free text for higher accuracy |
 | `moveDate` | 💡 Inferred: must be a valid ISO-8601 date, not in the past; reasonable upper bound (e.g., not more than 12 months out) |
 | `dateFlexibility` | Required, must be one of the 4 enum values exactly (case-sensitive match against DB enum) |
