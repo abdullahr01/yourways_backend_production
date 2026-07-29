@@ -2786,31 +2786,41 @@ Per `FRONTEND_INTEGRATION.md`: *"Database: Supabase (Postgres). Frontend never t
 
 🔧 IMPLEMENTED at the **role** level (`requireAuth('admin')`, etc. — Section 9.1/`middleware/auth.js`). ⚠️ **Missing at the ownership level** in several places (Section 17.3).
 
-### 17.3 API Security — Object-Level Authorization Gaps ⚠️ GAP (💡 inferred from route analysis)
-
-| Endpoint Pattern | Gap |
-|---|---|
-| `GET /api/orders/user/:userId` | Should verify `req.auth.id === :userId` for role `user` (a customer could otherwise view another customer's order history by changing the URL param) |
-| `GET /api/drivers/:id/orders` | Should verify `req.auth.id === :id` for role `driver` |
-| `PUT /api/drivers/:id` | Allows role `user` in addition to `driver` per the route definition (`requireAuth(['driver', 'user'])`) — this looks like it may be intended for Admin-acting-as-user support tooling, but as written, **any authenticated customer could potentially edit any driver's profile** unless additional ownership logic exists in the controller. Must be verified/tightened. |
-| `GET /api/orders/:id`, `/api/orders/code/:orderId` | "Optional" auth means unauthenticated requests can view full order details if they know/guess the ID — should require auth + ownership check, with a separate limited "public tracking" data shape if a shareable link feature (Section 14.4) is desired |
-| `GET /api/drivers/:id` | Public (no auth) — exposes driver PII (name, phone, vehicle number) to anyone |
+### 17.3 API Security — Object-Level Authorization ✅ RESOLVED
 
 **This class of vulnerability is known as IDOR (Insecure Direct Object Reference) / Broken Object Level Authorization — OWASP API Security Top 10 #1.** Every endpoint taking a resource ID must verify the caller is authorized for *that specific resource*, not just that they hold *a* valid token of the right role.
 
-### 17.4 Role-Based Access — Recommended Enforcement Pattern 💡 INFERRED
+The gaps previously listed here have been fixed via a new `requireSelf(paramName)` middleware (`middleware/auth.js`), which runs after `requireAuth(role)` and confirms `req.params[paramName] === req.auth.id`. Admin tokens always bypass it, since admins are permitted to act on any record.
 
-```js
-// Example middleware to add: ownership-aware authorization
-const requireOwnerOrAdmin = (paramName, roleField = 'id') => (req, res, next) => {
-  const isAdmin = req.auth.role === 'admin';
-  const isOwner = req.auth[roleField] === req.params[paramName];
-  if (!isAdmin && !isOwner) {
-    return errorResponse(res, 403, 'Insufficient permissions');
+| Endpoint Pattern | Status |
+|---|---|
+| `GET /api/bookings/user/:userId` | ✅ Fixed — `requireAuth('user') + requireSelf('userId')` |
+| `GET /api/orders/user/:userId` | ✅ Fixed — `requireAuth('user') + requireSelf('userId')` |
+| `PUT /api/drivers/:id` | ✅ Fixed — role restricted to `driver` only (the `user` role was removed from `requireAuth([...])`, since no legitimate flow required it) plus `requireSelf('id')` |
+| `POST /api/drivers/:id/go-online`, `/go-offline`, `/update-location` | ✅ Fixed — `requireAuth('driver') + requireSelf('id')` |
+| `GET /api/drivers/:id/orders`, `/orders/active`, `/statistics` | ✅ Fixed — `requireAuth('driver') + requireSelf('id')` |
+| `PATCH /api/drivers/:id/orders/:orderId/status`, `.../complete-pickup`, `.../complete-delivery` | ✅ Fixed — `requireAuth('driver') + requireSelf('id')` |
+| `GET /api/orders/:id`, `/api/orders/code/:orderId` | ⚠️ Still open — "optional" auth means unauthenticated requests can view full order details if they know/guess the ID. Left as-is for now since it may intentionally support a future shareable-tracking-link feature (Section 14.4); revisit if that's not the intent. |
+| `GET /api/drivers/:id` | Intentionally left public (no auth) — this is the driver's public-facing profile card shown to customers during order tracking (name/phone/vehicle only, no sensitive fields) |
+
+### 17.4 Role-Based Access — Enforcement Pattern 🔧 IMPLEMENTED
+
+```20:35:middleware/auth.js
+const requireSelf = (paramName = 'id') => (req, res, next) => {
+  const role = req.auth?.role || 'user';
+  if (role === 'admin') return next();
+
+  const ownId = req.auth?.id || req.auth?._id;
+  const targetId = req.params[paramName];
+
+  if (!ownId || String(ownId) !== String(targetId)) {
+    return errorResponse(res, 403, 'You do not have permission to access this resource');
   }
   next();
 };
 ```
+
+Usage: `router.get('/user/:userId', requireAuth('user'), requireSelf('userId'), Controller.method);`
 
 ### 17.5 Payment Security
 
@@ -3051,7 +3061,7 @@ Also relevant to compliance: notification opt-out/preferences (Section 5.5, 11.6
 | 2 | **Driver cancels after assignment** | Order reverts from `confirmed` toward a re-assignable state (💡 inferred: introduce a `driver_id = NULL`, `status` stays `confirmed`/reverts to `pending` depending on policy) — Admin is alerted to reassign; customer is notified of the delay, not left silently waiting |
 | 3 | **Payment fails** | Order should not progress to `confirmed`/driver-assignable state until payment succeeds **if pre-payment is the chosen model** (Section 5.4 decision point); customer is prompted to retry payment |
 | 4 | **Customer edits booking** after a quote was calculated | Recalculate and re-persist the quote; 💡 inferred: if edited after submission (no longer `draft`), editing should not be allowed via the standard update endpoint — should require a support-assisted amendment or a "cancel and rebook" flow |
-| 5 | **Duplicate booking** (customer accidentally double-taps "Confirm") | 💡 Inferred: idempotency key on booking submission, or client-side debounce + server-side "was an identical booking just submitted by this user in the last N seconds" guard |
+| 5 | **Duplicate booking** (customer accidentally double-taps "Confirm", or tries to start a second job while one is already open) | ✅ RESOLVED — `BookingService.assertNoActiveRequest()` (`services/booking_service.js`) blocks `POST /api/bookings/create` and `POST /api/bookings/:id/submit` if the customer already has an unfinished booking (`draft`/`submitted`) or an active order (any status other than `completed`/`cancelled`), with a clear 400 error naming the conflicting booking/order. This is a stricter, business-driven rule (one open request per customer, period) rather than just a double-tap debounce — see Section 21.1. |
 | 6 | **Network disconnect** mid-flow (booking, payment, or driver status update) | See Section 19.3/19.8 — queue-and-retry for driver actions, clear "uncertain" state messaging for customer-facing mutations |
 | 7 | **Tracking unavailable** (driver GPS off, app killed, or realtime channel down) | Show last-known position with an explicit "last updated X minutes ago" timestamp rather than a silently frozen or blank map |
 | 8 | **Invalid OTP** | Clear error message with attempts-remaining; lock out after N failed attempts for a cooldown period (brute-force protection, ties to Section 17.10 rate limiting) |
@@ -3086,6 +3096,7 @@ This section consolidates every gap flagged (⚠️) throughout the document int
 | No mandatory insurance enforcement for high-value/specialist categories | Section 6.2 (Specialist & Antique, Piano) — currently insurance is always optional even where risk is highest |
 | No driver-vehicle-category eligibility rules | Section 5.8, 20.15 — nothing stops an Admin from assigning a driver without the right equipment/license to a specialist job |
 | No quote expiry policy | Section 20.22 — a quote calculated today could theoretically be honored indefinitely, exposing the business to stale pricing |
+| ~~No limit on concurrent open requests per customer~~ ✅ RESOLVED | `BookingService.assertNoActiveRequest()` now enforces one open request (unfinished booking OR active order) per customer at both booking-creation and submit time — see Section 20 row 5 |
 
 ### 21.2 Missing APIs
 

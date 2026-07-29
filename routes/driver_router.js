@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const DriverController = require('../controllers/driver_controller');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireSelf } = require('../middleware/auth');
 const logger = require('../utils/logger');
 
 logger.info('[ROUTES] Driver routes loaded (Supabase + JWT)');
@@ -11,22 +11,51 @@ router.post('/register', DriverController.register);
 router.post('/login', DriverController.login);
 router.post('/logout', requireAuth('driver'), DriverController.logout);
 
-// Driver self endpoints
+// Driver self endpoints — requireSelf ensures a driver's token can only
+// read/modify THEIR OWN record, never another driver's (previously any
+// authenticated driver could edit/query any :id by just changing the URL).
+// GET /:id stays public/unauthenticated on purpose — it's the driver's
+// public-facing profile shown to customers during order tracking.
 router.get('/:id', DriverController.getById);
-router.put('/:id', requireAuth(['driver', 'user']), DriverController.update);
+router.put('/:id', requireAuth('driver'), requireSelf('id'), DriverController.update);
 
 // Driver session actions
-router.post('/:id/go-online', requireAuth('driver'), DriverController.goOnline);
-router.post('/:id/go-offline', requireAuth('driver'), DriverController.goOffline);
-router.post('/:id/update-location', requireAuth('driver'), DriverController.updateLocation);
+router.post('/:id/go-online', requireAuth('driver'), requireSelf('id'), DriverController.goOnline);
+router.post('/:id/go-offline', requireAuth('driver'), requireSelf('id'), DriverController.goOffline);
+router.post(
+  '/:id/update-location',
+  requireAuth('driver'),
+  requireSelf('id'),
+  DriverController.updateLocation
+);
 
-router.get('/:id/orders', requireAuth('driver'), DriverController.getDriverOrders);
-router.get('/:id/orders/active', requireAuth('driver'), DriverController.getDriverActiveOrders);
-router.patch('/:id/orders/:orderId/status', requireAuth('driver'), DriverController.updateOrderStatus);
-router.post('/:id/orders/:orderId/complete-pickup', requireAuth('driver'), DriverController.completePickup);
-router.post('/:id/orders/:orderId/complete-delivery', requireAuth('driver'), DriverController.completeDelivery);
+router.get('/:id/orders', requireAuth('driver'), requireSelf('id'), DriverController.getDriverOrders);
+router.get(
+  '/:id/orders/active',
+  requireAuth('driver'),
+  requireSelf('id'),
+  DriverController.getDriverActiveOrders
+);
+router.patch(
+  '/:id/orders/:orderId/status',
+  requireAuth('driver'),
+  requireSelf('id'),
+  DriverController.updateOrderStatus
+);
+router.post(
+  '/:id/orders/:orderId/complete-pickup',
+  requireAuth('driver'),
+  requireSelf('id'),
+  DriverController.completePickup
+);
+router.post(
+  '/:id/orders/:orderId/complete-delivery',
+  requireAuth('driver'),
+  requireSelf('id'),
+  DriverController.completeDelivery
+);
 
-router.get('/:id/statistics', requireAuth('driver'), DriverController.getStatistics);
+router.get('/:id/statistics', requireAuth('driver'), requireSelf('id'), DriverController.getStatistics);
 
 // NOTE: approve / list-all drivers moved to /api/admin/drivers
 

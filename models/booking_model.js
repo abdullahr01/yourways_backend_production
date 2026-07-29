@@ -166,6 +166,7 @@ const findMany = async (filter = {}, limit = 100) => {
 
   if (filter.userId || filter.user_id) query = query.eq('user_id', filter.userId || filter.user_id);
   if (filter.status) query = query.eq('status', filter.status);
+  if (filter.statusIn) query = query.in('status', filter.statusIn);
 
   const result = await query;
   const rows = handleSupabase('bookings.findMany', result);

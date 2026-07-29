@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const OrderController = require('../controllers/order_controller');
-const { requireAuth, optionalAuth } = require('../middleware/auth');
+const { requireAuth, requireSelf, optionalAuth } = require('../middleware/auth');
 const logger = require('../utils/logger');
 
 logger.info('[ROUTES] Order routes loaded (Supabase)');
@@ -17,7 +17,9 @@ router.post('/create-from-booking', requireAuth('user'), OrderController.createF
 router.post('/create', requireAuth('user'), OrderController.create);
 
 router.get('/active', optionalAuth, OrderController.getActive);
-router.get('/user/:userId', requireAuth('user'), OrderController.getByUser);
+// requireSelf: same reasoning as bookings — a customer can only list THEIR
+// OWN order history.
+router.get('/user/:userId', requireAuth('user'), requireSelf('userId'), OrderController.getByUser);
 router.get('/code/:orderId', optionalAuth, OrderController.getByOrderId);
 router.get('/:id/tracking', optionalAuth, OrderController.getTracking);
 router.get('/:id', optionalAuth, OrderController.getById);

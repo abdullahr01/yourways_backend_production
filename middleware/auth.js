@@ -110,6 +110,31 @@ const optionalAuth = async (req, res, next) => {
   next();
 };
 
+/**
+ * Object-level authorization guard. Must run AFTER requireAuth(role) so
+ * req.auth is already populated. Confirms the :paramName in the URL is the
+ * caller's own id — without this, requireAuth('user')/requireAuth('driver')
+ * only prove "you are *a* user/driver", not "this is *your* resource", so
+ * any valid token could read/modify a different account's data by simply
+ * changing the id in the URL (broken object-level authorization / IDOR).
+ * Admin tokens always bypass this — admins are allowed to act on any record.
+ */
+const requireSelf = (paramName = 'id') => (req, res, next) => {
+  const role = req.auth?.role || 'user';
+  if (role === 'admin') return next();
+
+  const ownId = req.auth?.id || req.auth?._id;
+  const targetId = req.params[paramName];
+
+  if (!ownId || String(ownId) !== String(targetId)) {
+    logger.warn(
+      `[AUTH] Ownership denied: token id=${ownId} role=${role} tried ${paramName}=${targetId} on ${req.originalUrl}`
+    );
+    return errorResponse(res, 403, 'You do not have permission to access this resource');
+  }
+  next();
+};
+
 module.exports = {
   JWT_SECRET,
   extractToken,
@@ -118,4 +143,5 @@ module.exports = {
   revokeToken,
   requireAuth,
   optionalAuth,
+  requireSelf,
 };

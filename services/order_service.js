@@ -112,6 +112,16 @@ class OrderService {
     try {
       logger.info('[ORDER SVC] Direct create order...');
 
+      if (orderData.userId) {
+        const existingActive = await this.getActiveOrderForUser(orderData.userId);
+        if (existingActive) {
+          throw new Error(
+            `You already have an active order (${existingActive.orderId}, status: ${existingActive.status}). ` +
+              `Please wait until it is completed or cancelled before creating a new request.`
+          );
+        }
+      }
+
       // Best-effort geocoding when coordinates aren't already supplied.
       if (!orderData.pickupCoordinates && orderData.pickupLocation) {
         orderData.pickupCoordinates = await MapsService.geocode(orderData.pickupLocation);
@@ -262,6 +272,17 @@ class OrderService {
     }
   }
 
+  /**
+   * Single-order existence check backing the "one active request at a time"
+   * rule (booking_service.js#assertNoActiveRequest). Returns the raw (not
+   * formatted-for-driver) order so callers can read orderId/status directly.
+   */
+  async getActiveOrderForUser(userId) {
+    if (!userId) return null;
+    const orders = await Order.findMany({ userId, statusIn: ACTIVE_STATUSES }, 1);
+    return orders[0] || null;
+  }
+
   async updateOrderStatus(orderId, newStatus) {
     try {
       logger.info(`[ORDER SVC] updateStatus id=${orderId} → ${newStatus}`);
@@ -377,3 +398,4 @@ class OrderService {
 }
 
 module.exports = new OrderService();
+module.exports.ACTIVE_STATUSES = ACTIVE_STATUSES;

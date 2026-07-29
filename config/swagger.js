@@ -518,6 +518,8 @@ const swaggerDefinition = {
       post: {
         tags: ['Bookings'],
         summary: 'Create draft booking',
+        description:
+          'Rejects with 400 if this userId already has an unfinished booking (draft/submitted) or an active order (any status other than completed/cancelled) — a customer may only have one open request at a time.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -527,7 +529,10 @@ const swaggerDefinition = {
             },
           },
         },
-        responses: { 201: { description: 'Booking created' } },
+        responses: {
+          201: { description: 'Booking created' },
+          400: { description: 'Validation error, or customer already has an unfinished booking/active order' },
+        },
       },
     },
     '/api/bookings/all': {
@@ -545,13 +550,18 @@ const swaggerDefinition = {
     '/api/bookings/user/{userId}': {
       get: {
         tags: ['Bookings'],
-        summary: 'Bookings by user',
+        summary: "Get the caller's own booking history",
+        description:
+          'userId must match the authenticated user (403 otherwise). Omit ?status to get all bookings and filter client-side using each item\'s status field, or pass ?status= for server-side filtering.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-          { name: 'status', in: 'query', schema: { type: 'string' } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'submitted', 'converted_to_order'] } },
         ],
-        responses: { 200: { description: 'User bookings' } },
+        responses: {
+          200: { description: 'User bookings' },
+          403: { description: "userId does not match the caller's own id" },
+        },
       },
     },
     '/api/bookings/{id}': {
@@ -711,12 +721,18 @@ const swaggerDefinition = {
     '/api/orders/user/{userId}': {
       get: {
         tags: ['Orders'],
-        summary: 'Orders by user',
+        summary: "Get the caller's own order history",
+        description:
+          'userId must match the authenticated user (403 otherwise). Omit ?status to get all orders and filter client-side using each item\'s status field, or pass ?status= for server-side filtering.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'status', in: 'query', schema: { type: 'string' } },
         ],
-        responses: { 200: { description: 'User orders' } },
+        responses: {
+          200: { description: 'User orders' },
+          403: { description: "userId does not match the caller's own id" },
+        },
       },
     },
     '/api/orders/code/{orderId}': {
