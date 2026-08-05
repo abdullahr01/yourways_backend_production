@@ -12,6 +12,9 @@ const formatDriver = (driver) => {
     vehicleType: driver.vehicleType || null,
     vehicleNumber: driver.vehicleNumber || null,
     rating: driver.rating ?? null,
+    // Admin-uploaded at driver creation time — shown to customers/admin so
+    // they can recognize the assigned driver (KB Section 7 driver approval flow).
+    photoUrl: driver.profilePictureUrl || null,
   };
 };
 

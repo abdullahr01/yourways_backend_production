@@ -6,8 +6,10 @@ const logger = require('../utils/logger');
 
 logger.info('[ROUTES] Driver routes loaded (Supabase + JWT)');
 
-// Public auth
-router.post('/register', DriverController.register);
+// Public auth — NOTE: there is no driver self-registration. Drivers are
+// created exclusively by an admin (POST /api/admin/drivers) with the
+// admin-verified OTP approval flow (handled entirely client-side by the
+// admin app via Firebase, same as customer OTP) — see AdminController.createDriver.
 router.post('/login', DriverController.login);
 router.post('/logout', requireAuth('driver'), DriverController.logout);
 

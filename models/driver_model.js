@@ -19,6 +19,9 @@ const mapDriver = (row) => {
     licenseNumber: row.license_number ?? null,
     vehicleType: row.vehicle_type ?? null,
     vehicleNumber: row.vehicle_number ?? null,
+    // Uploaded client-side (admin panel) directly to storage; we only ever
+    // store the resulting URL — see KB Section 13/22 upload convention.
+    profilePictureUrl: row.profile_picture_url ?? null,
     isApprovedByAdmin: row.is_approved_by_admin,
     status: row.status,
     isOnline: row.is_online,
@@ -46,6 +49,7 @@ const toDbInsert = (data) =>
     license_number: data.licenseNumber ?? data.license_number,
     vehicle_type: data.vehicleType ?? data.vehicle_type,
     vehicle_number: data.vehicleNumber ?? data.vehicle_number,
+    profile_picture_url: data.profilePictureUrl ?? data.profile_picture_url ?? null,
     is_approved_by_admin: data.isApprovedByAdmin ?? false,
     status: data.status || 'inactive',
     is_online: false,
@@ -61,6 +65,7 @@ const toDbUpdate = (data) =>
     license_number: data.licenseNumber ?? data.license_number,
     vehicle_type: data.vehicleType ?? data.vehicle_type,
     vehicle_number: data.vehicleNumber ?? data.vehicle_number,
+    profile_picture_url: data.profilePictureUrl ?? data.profile_picture_url,
     is_approved_by_admin: data.isApprovedByAdmin ?? data.is_approved_by_admin,
     status: data.status,
     is_online: data.isOnline ?? data.is_online,

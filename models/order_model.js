@@ -28,6 +28,7 @@ const mapOrder = (row) => {
           vehicleType: driverRow.vehicle_type || null,
           vehicleNumber: driverRow.vehicle_number || null,
           rating: driverRow.rating != null ? Number(driverRow.rating) : null,
+          profilePictureUrl: driverRow.profile_picture_url || null,
         }
       : row.driver_id
         ? { id: row.driver_id }
@@ -101,7 +102,7 @@ const mapOrder = (row) => {
 };
 
 const SELECT_WITH_DRIVER =
-  '*, drivers:driver_id ( name, phone, vehicle_type, vehicle_number, rating )';
+  '*, drivers:driver_id ( name, phone, vehicle_type, vehicle_number, rating, profile_picture_url )';
 
 const toDbInsert = (data) =>
   stripUndefined({

@@ -5,6 +5,7 @@ const Booking = require('../models/booking_model');
 const Order = require('../models/order_model');
 const OrderService = require('./order_service');
 const DriverService = require('./driver_service');
+const DRIVER_STATUS = require('../constants/driver_status');
 const logger = require('../utils/logger');
 const { formatOrders } = require('../utils/orderFormatter');
 
@@ -133,6 +134,18 @@ class AdminService {
   }
 
   // ——— Drivers ———
+  /**
+   * Admin-only driver creation — the ONLY way a driver profile is created
+   * (there is no self-registration). The admin app is responsible for the
+   * OTP-verified approval step client-side (Firebase, same pattern as
+   * customer OTP); this just persists the profile as unapproved, exactly
+   * like DriverService.registerDriver always did.
+   */
+  async createDriver(driverData) {
+    logger.info('[ADMIN SVC] createDriver...');
+    return DriverService.registerDriver(driverData);
+  }
+
   async listDrivers() {
     logger.info('[ADMIN SVC] listDrivers');
     return Driver.findAll();
@@ -143,10 +156,20 @@ class AdminService {
     return DriverService.approveDriver(driverId);
   }
 
-  async suspendDriver(driverId) {
-    logger.info(`[ADMIN SVC] suspendDriver id=${driverId}`);
+  /** Driver cannot log in at all until re-activated. */
+  async blockDriver(driverId) {
+    logger.info(`[ADMIN SVC] blockDriver id=${driverId}`);
     return Driver.updateById(driverId, {
-      status: 'suspended',
+      status: DRIVER_STATUS.BLOCKED,
+      isOnline: false,
+    });
+  }
+
+  /** Driver can still log in, but cannot go online (app shows a "contact admin" popup). */
+  async deactivateDriver(driverId) {
+    logger.info(`[ADMIN SVC] deactivateDriver id=${driverId}`);
+    return Driver.updateById(driverId, {
+      status: DRIVER_STATUS.DEACTIVATED,
       isOnline: false,
     });
   }
@@ -158,7 +181,7 @@ class AdminService {
     if (!driver.isApprovedByAdmin) {
       throw new Error('Driver must be approved before activation');
     }
-    return Driver.updateById(driverId, { status: 'active' });
+    return Driver.updateById(driverId, { status: DRIVER_STATUS.ACTIVE });
   }
 
   // ——— Bookings ———

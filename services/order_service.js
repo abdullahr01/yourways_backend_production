@@ -4,7 +4,7 @@ const Driver = require('../models/driver_model');
 const MapsService = require('./maps_service');
 const RealtimeService = require('./realtime_service');
 const logger = require('../utils/logger');
-const { formatOrder, formatOrders } = require('../utils/orderFormatter');
+const { formatOrder, formatOrders, formatDriver } = require('../utils/orderFormatter');
 
 const ACTIVE_STATUSES = [
   'pending',
@@ -192,7 +192,7 @@ class OrderService {
         orderId: order.orderId,
         status: order.status,
         timeline,
-        driver: order.driver,
+        driver: formatDriver(order.driver),
         driverLocation,
         eta,
         pickupLocation: order.pickupLocation,
@@ -203,6 +203,14 @@ class OrderService {
         deliveryPostcode: order.deliveryPostcode,
         pickupCoordinates: order.pickupCoordinates,
         deliveryCoordinates: order.deliveryCoordinates,
+        // Proof-of-delivery — captured by the driver app at pickup/delivery
+        // (client uploads to storage, backend only stores the URL/string).
+        // Previously captured but never surfaced on the tracking screen.
+        pickupPhotos: order.pickupPhotos || [],
+        deliveryPhotos: order.deliveryPhotos || [],
+        pickupSignature: order.pickupSignature || null,
+        deliverySignature: order.deliverySignature || null,
+        driverComment: order.driverComment || null,
         realtimeChannel: `order-${order._id}`,
       };
     } catch (err) {
@@ -312,6 +320,9 @@ class OrderService {
       const driver = await Driver.findById(driverId);
       if (!driver) throw new Error('Driver not found');
       if (!driver.isApprovedByAdmin) throw new Error('Driver is not approved by admin');
+      if (driver.status === 'blocked' || driver.status === 'deactivated') {
+        throw new Error(`Cannot assign a ${driver.status} driver — activate them first`);
+      }
 
       const existing = await Order.findById(orderId);
       if (!existing) throw new Error('Order not found');

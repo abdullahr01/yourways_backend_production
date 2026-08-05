@@ -1,4 +1,5 @@
 const AdminService = require('../services/admin_service');
+const CatalogService = require('../services/catalog_service');
 const { successResponse, errorResponse } = require('../utils/responseHandler');
 const { revokeToken } = require('../middleware/auth');
 const logger = require('../utils/logger');
@@ -100,6 +101,17 @@ class AdminController {
   }
 
   // ——— Drivers ———
+  async createDriver(req, res) {
+    try {
+      logger.info('[ADMIN CTRL] createDriver');
+      const driver = await AdminService.createDriver(req.body);
+      return successResponse(res, 201, 'Driver created successfully (pending approval)', driver);
+    } catch (err) {
+      logger.error(`[ADMIN CTRL] createDriver failed: ${err.message}`);
+      return errorResponse(res, 400, 'Driver creation failed', err);
+    }
+  }
+
   async listDrivers(req, res) {
     try {
       logger.info('[ADMIN CTRL] listDrivers');
@@ -122,14 +134,25 @@ class AdminController {
     }
   }
 
-  async suspendDriver(req, res) {
+  async blockDriver(req, res) {
     try {
-      logger.info(`[ADMIN CTRL] suspendDriver id=${req.params.id}`);
-      const driver = await AdminService.suspendDriver(req.params.id);
-      return successResponse(res, 200, 'Driver suspended successfully', driver);
+      logger.info(`[ADMIN CTRL] blockDriver id=${req.params.id}`);
+      const driver = await AdminService.blockDriver(req.params.id);
+      return successResponse(res, 200, 'Driver blocked successfully', driver);
     } catch (err) {
-      logger.error(`[ADMIN CTRL] suspendDriver failed: ${err.message}`);
-      return errorResponse(res, 400, 'Driver suspend failed', err);
+      logger.error(`[ADMIN CTRL] blockDriver failed: ${err.message}`);
+      return errorResponse(res, 400, 'Driver block failed', err);
+    }
+  }
+
+  async deactivateDriver(req, res) {
+    try {
+      logger.info(`[ADMIN CTRL] deactivateDriver id=${req.params.id}`);
+      const driver = await AdminService.deactivateDriver(req.params.id);
+      return successResponse(res, 200, 'Driver deactivated successfully', driver);
+    } catch (err) {
+      logger.error(`[ADMIN CTRL] deactivateDriver failed: ${err.message}`);
+      return errorResponse(res, 400, 'Driver deactivation failed', err);
     }
   }
 
@@ -251,6 +274,148 @@ class AdminController {
       return successResponse(res, 200, 'Order cancelled successfully', order);
     } catch (err) {
       return errorResponse(res, 400, 'Order cancellation failed', err);
+    }
+  }
+
+  // ——— Catalog: service types ———
+  // Full CRUD over items/categories/prices listed on the platform (DB-backed,
+  // see sql/005_driver_and_catalog.sql + services/catalog_service.js).
+  async createServiceType(req, res) {
+    try {
+      logger.info('[ADMIN CTRL] createServiceType');
+      const serviceType = await CatalogService.createServiceType(req.body);
+      return successResponse(res, 201, 'Service type created successfully', serviceType);
+    } catch (err) {
+      logger.error(`[ADMIN CTRL] createServiceType failed: ${err.message}`);
+      return errorResponse(res, 400, 'Service type creation failed', err);
+    }
+  }
+
+  async updateServiceType(req, res) {
+    try {
+      logger.info(`[ADMIN CTRL] updateServiceType id=${req.params.id}`);
+      const serviceType = await CatalogService.updateServiceType(req.params.id, req.body);
+      return successResponse(res, 200, 'Service type updated successfully', serviceType);
+    } catch (err) {
+      logger.error(`[ADMIN CTRL] updateServiceType failed: ${err.message}`);
+      return errorResponse(res, 400, 'Service type update failed', err);
+    }
+  }
+
+  async deleteServiceType(req, res) {
+    try {
+      logger.info(`[ADMIN CTRL] deleteServiceType id=${req.params.id}`);
+      await CatalogService.deleteServiceType(req.params.id);
+      return successResponse(res, 200, 'Service type deleted successfully');
+    } catch (err) {
+      logger.error(`[ADMIN CTRL] deleteServiceType failed: ${err.message}`);
+      return errorResponse(res, 400, 'Service type deletion failed', err);
+    }
+  }
+
+  // ——— Catalog: categories ———
+  async createCategory(req, res) {
+    try {
+      logger.info('[ADMIN CTRL] createCategory');
+      const category = await CatalogService.createCategory(req.body);
+
+      // Convenience: allow creating + attaching to a service type in one call.
+      if (req.body.serviceTypeId) {
+        await CatalogService.attachCategoryToServiceType(
+          req.body.serviceTypeId,
+          category.id,
+          req.body.sortOrder || 0
+        );
+      }
+
+      return successResponse(res, 201, 'Category created successfully', category);
+    } catch (err) {
+      logger.error(`[ADMIN CTRL] createCategory failed: ${err.message}`);
+      return errorResponse(res, 400, 'Category creation failed', err);
+    }
+  }
+
+  async updateCategory(req, res) {
+    try {
+      logger.info(`[ADMIN CTRL] updateCategory id=${req.params.id}`);
+      const category = await CatalogService.updateCategory(req.params.id, req.body);
+      return successResponse(res, 200, 'Category updated successfully', category);
+    } catch (err) {
+      logger.error(`[ADMIN CTRL] updateCategory failed: ${err.message}`);
+      return errorResponse(res, 400, 'Category update failed', err);
+    }
+  }
+
+  async deleteCategory(req, res) {
+    try {
+      logger.info(`[ADMIN CTRL] deleteCategory id=${req.params.id}`);
+      await CatalogService.deleteCategory(req.params.id);
+      return successResponse(res, 200, 'Category deleted successfully');
+    } catch (err) {
+      logger.error(`[ADMIN CTRL] deleteCategory failed: ${err.message}`);
+      return errorResponse(res, 400, 'Category deletion failed', err);
+    }
+  }
+
+  /** Attach an existing (often shared, e.g. "Custom Item") category to another service type. */
+  async attachCategory(req, res) {
+    try {
+      const { categoryId } = req.params;
+      const { serviceTypeId, sortOrder } = req.body;
+      if (!serviceTypeId) throw new Error('serviceTypeId is required');
+      logger.info(`[ADMIN CTRL] attachCategory category=${categoryId} -> serviceType=${serviceTypeId}`);
+      const joined = await CatalogService.attachCategoryToServiceType(serviceTypeId, categoryId, sortOrder || 0);
+      return successResponse(res, 201, 'Category attached to service type successfully', joined);
+    } catch (err) {
+      logger.error(`[ADMIN CTRL] attachCategory failed: ${err.message}`);
+      return errorResponse(res, 400, 'Category attach failed', err);
+    }
+  }
+
+  async detachCategory(req, res) {
+    try {
+      const { categoryId, serviceTypeId } = req.params;
+      logger.info(`[ADMIN CTRL] detachCategory category=${categoryId} from serviceType=${serviceTypeId}`);
+      await CatalogService.detachCategoryFromServiceType(serviceTypeId, categoryId);
+      return successResponse(res, 200, 'Category detached from service type successfully');
+    } catch (err) {
+      logger.error(`[ADMIN CTRL] detachCategory failed: ${err.message}`);
+      return errorResponse(res, 400, 'Category detach failed', err);
+    }
+  }
+
+  // ——— Catalog: items (incl. price overrides) ———
+  async createItem(req, res) {
+    try {
+      logger.info('[ADMIN CTRL] createItem');
+      if (!req.body.categoryId) throw new Error('categoryId is required');
+      const item = await CatalogService.createItem(req.body);
+      return successResponse(res, 201, 'Item created successfully', item);
+    } catch (err) {
+      logger.error(`[ADMIN CTRL] createItem failed: ${err.message}`);
+      return errorResponse(res, 400, 'Item creation failed', err);
+    }
+  }
+
+  async updateItem(req, res) {
+    try {
+      logger.info(`[ADMIN CTRL] updateItem id=${req.params.id}`);
+      const item = await CatalogService.updateItem(req.params.id, req.body);
+      return successResponse(res, 200, 'Item updated successfully', item);
+    } catch (err) {
+      logger.error(`[ADMIN CTRL] updateItem failed: ${err.message}`);
+      return errorResponse(res, 400, 'Item update failed', err);
+    }
+  }
+
+  async deleteItem(req, res) {
+    try {
+      logger.info(`[ADMIN CTRL] deleteItem id=${req.params.id}`);
+      await CatalogService.deleteItem(req.params.id);
+      return successResponse(res, 200, 'Item deleted successfully');
+    } catch (err) {
+      logger.error(`[ADMIN CTRL] deleteItem failed: ${err.message}`);
+      return errorResponse(res, 400, 'Item deletion failed', err);
     }
   }
 }

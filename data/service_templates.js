@@ -2,9 +2,13 @@
  * Service templates matching YourWays SRS (Yourways.docx Section 5 - Goods Categories & Subcategories)
  * and the full reverse-engineered catalog in docs/KNOWLEDGE_BASE.md Section 6 (Business Service Catalog).
  *
- * Used by the mobile app / website to show service -> category -> subcategory -> item pickers,
- * and by the Pricing Engine (services/pricing_service.js) to look up per-item weight/handling
- * defaults via `findCatalogItem()`.
+ * IMPORTANT — as of sql/005_driver_and_catalog.sql this file is **seed data only**.
+ * The running app reads the catalog from the database via services/catalog_service.js
+ * (admin-editable at /api/admin/catalog/*). Populate the DB once with:
+ *   node scripts/seed_catalog.js
+ *
+ * Historically used by the mobile app / website pickers and Pricing Engine
+ * via findCatalogItem(); those now hit CatalogService against Postgres.
  *
  * IMPORTANT — Tree A / Tree B normalization (KB Section 6.4 "Duplicate Categories & Overlapping
  * Items — Findings"):

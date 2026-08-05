@@ -6,26 +6,8 @@ const logger = require('../utils/logger');
 
 class DriverController {
   // ==================== Authentication ====================
-  
-  async register(req, res) {
-    try {
-      logger.info('[INFO] 🚗 Driver registration request received');
-      logger.info(`[INFO] Request body fields: ${Object.keys(req.body).join(', ')}`);
-      
-      const driver = await DriverService.registerDriver(req.body);
-      
-      logger.success(`[SUCCESS] ✅ Driver registered successfully: ${driver.name}`);
-      successResponse(
-        res, 
-        201, 
-        'Driver registered successfully (pending approval)', 
-        driver
-      );
-    } catch (err) {
-      logger.error(`[ERROR] ❌ Driver registration failed: ${err.message}`);
-      errorResponse(res, 400, 'Driver registration failed', err);
-    }
-  }
+  // NOTE: there is no driver self-registration endpoint — drivers are only
+  // ever created by an admin. See AdminController.createDriver.
 
   async login(req, res) {
     try {

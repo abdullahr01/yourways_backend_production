@@ -1,5 +1,5 @@
 const logger = require('../utils/logger');
-const { findCatalogItem } = require('../data/service_templates');
+const CatalogService = require('./catalog_service');
 const MapsService = require('./maps_service');
 
 // Business constants (KB Section 11.3 "Future Scalability" flags these as the
@@ -75,17 +75,26 @@ class PricingService {
   }
 
   /**
-   * Per-item line cost, using the KB Section 6.5/11.3 catalog lookup:
-   *  - If the customer supplied "Estimated Weight (kg)", that value wins.
-   *  - Otherwise fall back to the catalog item's real-world default weight
-   *    (e.g. ~250kg for an Upright Piano, ~8kg for a Small Box) instead of a
-   *    flat 15kg guess for every item regardless of type.
+   * Per-item line cost, using the admin-managed DB catalog (CatalogService,
+   * backed by service_items — see sql/005_driver_and_catalog.sql):
+   *  - If the admin set an explicit `basePrice` on the item, pricing uses
+   *    `qty * basePrice * pricingMultiplier` directly — this is what lets an
+   *    admin "type a price and have it change in the system".
+   *  - Otherwise (no basePrice override, the default for most items), it
+   *    falls back to the original weight-based formula:
+   *     - If the customer supplied "Estimated Weight (kg)", that value wins.
+   *     - Otherwise use the catalog item's real-world default weight (e.g.
+   *       ~250kg for an Upright Piano, ~8kg for a Small Box) instead of a
+   *       flat 15kg guess for every item regardless of type.
    *  - The item's category `pricingMultiplier` (e.g. 2.5x for pianos, 2.0x for
-   *    Specialist & Antique, 2.2x for Industrial) is applied to the line cost,
-   *    directly addressing the KB-flagged under-pricing gap for those categories.
+   *    Specialist & Antique, 2.2x for Industrial) is applied either way.
+   *
+   * Async because the catalog lookup is DB-backed (with an in-memory cache —
+   * see CatalogService) instead of a synchronous in-process object.
    */
-  calculateItemsCost(items = []) {
-    return items.reduce((sum, bookingItem) => {
+  async calculateItemsCost(items = []) {
+    let sum = 0;
+    for (const bookingItem of items) {
       const qty = bookingItem.quantity || 1;
       const modifiers = bookingItem.modifiers || {};
       const providedWeight =
@@ -93,18 +102,23 @@ class PricingService {
           ? modifiers.get('Estimated Weight (kg)')
           : modifiers['Estimated Weight (kg)'];
 
-      const catalogEntry = findCatalogItem(bookingItem.itemName || bookingItem.name);
+      const catalogEntry = await CatalogService.findCatalogItem(bookingItem.itemName || bookingItem.name);
+      const pricingMultiplier = catalogEntry?.pricingMultiplier ?? 1;
+
+      if (catalogEntry?.basePrice != null) {
+        sum += qty * Number(catalogEntry.basePrice) * pricingMultiplier;
+        continue;
+      }
+
       const fallbackWeight = catalogEntry?.defaultWeightKg ?? 15;
       const weight =
         providedWeight !== undefined && providedWeight !== null && providedWeight !== ''
           ? Number(providedWeight)
           : Number(fallbackWeight);
 
-      const pricingMultiplier = catalogEntry?.pricingMultiplier ?? 1;
-      const lineCost = qty * (5 + weight * 0.5) * pricingMultiplier;
-
-      return sum + lineCost;
-    }, 0);
+      sum += qty * (5 + weight * 0.5) * pricingMultiplier;
+    }
+    return sum;
   }
 
   /**
@@ -124,7 +138,7 @@ class PricingService {
 
     const basePrice = CALLOUT_FEE + distanceMiles * PER_MILE_RATE;
     const manpowerCost = this.getManpowerCost(bookingData.manpowerRequired);
-    const itemsCost = this.calculateItemsCost(bookingData.items);
+    const itemsCost = await this.calculateItemsCost(bookingData.items);
 
     const itemCount = (bookingData.items || []).reduce((s, i) => s + (i.quantity || 1), 0);
 

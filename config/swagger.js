@@ -272,25 +272,13 @@ const swaggerDefinition = {
     },
 
     // ——— Drivers ———
-    '/api/drivers/register': {
-      post: {
-        tags: ['Drivers'],
-        summary: 'Register driver (pending approval)',
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: { $ref: '#/components/schemas/DriverRegister' },
-            },
-          },
-        },
-        responses: { 201: { description: 'Registered' } },
-      },
-    },
+    // NOTE: no self-registration — drivers are created via POST /api/admin/drivers
     '/api/drivers/login': {
       post: {
         tags: ['Drivers'],
-        summary: 'Driver login by phone (needs admin approval first)',
+        summary: 'Driver login by phone (OTP verified client-side; needs admin approval first)',
+        description:
+          'Blocked drivers cannot log in. Deactivated drivers can log in but cannot go online. OTP itself is verified entirely on the Flutter client via Firebase — same as customers.',
         requestBody: {
           required: true,
           content: {
@@ -898,11 +886,41 @@ const swaggerDefinition = {
         security: [{ bearerAuth: [] }],
         responses: { 200: { description: 'Drivers' } },
       },
+      post: {
+        tags: ['Admin'],
+        summary: 'Create driver (admin-only — no self-registration)',
+        description:
+          'Creates an unapproved driver. Admin app verifies OTP client-side (Firebase) then calls approve. profilePictureUrl is required.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['name', 'email', 'phone', 'profilePictureUrl'],
+                properties: {
+                  name: { type: 'string' },
+                  email: { type: 'string' },
+                  phone: { type: 'string' },
+                  address: { type: 'string' },
+                  dob: { type: 'string' },
+                  licenseNumber: { type: 'string' },
+                  vehicleType: { type: 'string' },
+                  vehicleNumber: { type: 'string' },
+                  profilePictureUrl: { type: 'string', description: 'URL after client-side upload to storage' },
+                },
+              },
+            },
+          },
+        },
+        responses: { 201: { description: 'Driver created (pending approval)' } },
+      },
     },
     '/api/admin/drivers/{id}/approve': {
       put: {
         tags: ['Admin'],
-        summary: 'Approve driver',
+        summary: 'Approve driver (after client-side OTP verification)',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
@@ -910,15 +928,26 @@ const swaggerDefinition = {
         responses: { 200: { description: 'Approved' } },
       },
     },
-    '/api/admin/drivers/{id}/suspend': {
+    '/api/admin/drivers/{id}/deactivate': {
       put: {
         tags: ['Admin'],
-        summary: 'Suspend driver',
+        summary: 'Deactivate driver (can log in, cannot go online)',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
         ],
-        responses: { 200: { description: 'Suspended' } },
+        responses: { 200: { description: 'Deactivated' } },
+      },
+    },
+    '/api/admin/drivers/{id}/block': {
+      put: {
+        tags: ['Admin'],
+        summary: 'Block driver (cannot log in)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: { 200: { description: 'Blocked' } },
       },
     },
     '/api/admin/drivers/{id}/activate': {
@@ -930,6 +959,121 @@ const swaggerDefinition = {
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
         ],
         responses: { 200: { description: 'Activated' } },
+      },
+    },
+    '/api/admin/catalog/service-types': {
+      post: {
+        tags: ['Admin Catalog'],
+        summary: 'Create service type',
+        security: [{ bearerAuth: [] }],
+        requestBody: { content: { 'application/json': { schema: { type: 'object' } } } },
+        responses: { 201: { description: 'Created' } },
+      },
+    },
+    '/api/admin/catalog/service-types/{id}': {
+      put: {
+        tags: ['Admin Catalog'],
+        summary: 'Update service type',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: { content: { 'application/json': { schema: { type: 'object' } } } },
+        responses: { 200: { description: 'Updated' } },
+      },
+      delete: {
+        tags: ['Admin Catalog'],
+        summary: 'Delete service type',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: { 200: { description: 'Deleted' } },
+      },
+    },
+    '/api/admin/catalog/categories': {
+      post: {
+        tags: ['Admin Catalog'],
+        summary: 'Create category (optionally attach via serviceTypeId)',
+        security: [{ bearerAuth: [] }],
+        requestBody: { content: { 'application/json': { schema: { type: 'object' } } } },
+        responses: { 201: { description: 'Created' } },
+      },
+    },
+    '/api/admin/catalog/categories/{id}': {
+      put: {
+        tags: ['Admin Catalog'],
+        summary: 'Update category (e.g. pricingMultiplier)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: { content: { 'application/json': { schema: { type: 'object' } } } },
+        responses: { 200: { description: 'Updated' } },
+      },
+      delete: {
+        tags: ['Admin Catalog'],
+        summary: 'Delete category',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: { 200: { description: 'Deleted' } },
+      },
+    },
+    '/api/admin/catalog/categories/{categoryId}/attach': {
+      post: {
+        tags: ['Admin Catalog'],
+        summary: 'Attach existing category to a service type',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'categoryId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['serviceTypeId'],
+                properties: {
+                  serviceTypeId: { type: 'string', format: 'uuid' },
+                  sortOrder: { type: 'integer' },
+                },
+              },
+            },
+          },
+        },
+        responses: { 201: { description: 'Attached' } },
+      },
+    },
+    '/api/admin/catalog/items': {
+      post: {
+        tags: ['Admin Catalog'],
+        summary: 'Create catalog item (set basePrice to override weight pricing)',
+        security: [{ bearerAuth: [] }],
+        requestBody: { content: { 'application/json': { schema: { type: 'object' } } } },
+        responses: { 201: { description: 'Created' } },
+      },
+    },
+    '/api/admin/catalog/items/{id}': {
+      put: {
+        tags: ['Admin Catalog'],
+        summary: 'Update catalog item / price',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: { content: { 'application/json': { schema: { type: 'object' } } } },
+        responses: { 200: { description: 'Updated' } },
+      },
+      delete: {
+        tags: ['Admin Catalog'],
+        summary: 'Delete catalog item',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: { 200: { description: 'Deleted' } },
       },
     },
     '/api/admin/bookings': {

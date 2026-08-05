@@ -368,7 +368,7 @@ LogisticSys/
 ├── services/                # booking_service, order_service, driver_service, user_service, pricing_service, admin_service
 ├── models/                 # Supabase table access + camelCase <-> snake_case mapping
 ├── utils/                  # logger, responseHandler, orderFormatter, caseMapper, supabaseHelper
-├── data/service_templates.js  # Static category/item catalog (subset of SRS §5)
+├── data/service_templates.js  # Seed-only catalog source (live data is DB via CatalogService)
 ├── sql/                    # 001_create_tables.sql, 002_create_admins.sql
 └── postman/                # Postman collection for manual API testing
 ```
@@ -430,24 +430,46 @@ flowchart LR
 
 ### 4.2 Driver 📄 SRS §4.2 + 🔧 IMPLEMENTED
 
+> ✅ **RESOLVED / CHANGED (was: driver self-registration):** there is **no driver self-registration endpoint anymore**. `POST /api/drivers/register` has been removed. An admin creates every driver account (`POST /api/admin/drivers`), including a required profile picture, and only then runs the OTP-verified approval step described below. This matches how the business actually onboards drivers (vetted, admin-issued accounts) rather than an open sign-up funnel.
+
 **Permissions:**
-- Register (creates account in `pending approval` state)
-- Login **only after admin approval** (🔧 `is_approved_by_admin` flag enforced at login)
+- Cannot self-register — an **admin** creates the driver profile (name, phone, license, vehicle details, and a profile picture, all admin-supplied — `POST /api/admin/drivers`).
+- Login **only after admin approval** (🔧 `is_approved_by_admin` flag enforced at login), via the same phone-OTP flow as a customer (100% client-side Firebase — no backend OTP code either way).
+- **Admin-approval flow, step by step:** (1) admin submits the driver form above → driver row created, unapproved; (2) admin's app sends an OTP to the driver's phone and verifies it client-side (Firebase) — the backend is not involved in this OTP exchange at all; (3) once verified, the admin app calls `PUT /api/admin/drivers/:id/approve` → `isApprovedByAdmin: true`, `status: 'active'` → the driver can now log in.
 - View assigned bookings/orders
-- Update own online/offline availability
+- Toggle own online/offline availability via a homepage slider — subject to the **three-state lifecycle** below (a driver cannot flip this switch just because they're logged in)
 - Broadcast live GPS location
 - Update booking/order status (constrained to valid forward transitions — see Section 8)
-- Upload pickup/dropoff photos
-- Capture customer signatures
+- Upload pickup ("before shifting") and delivery ("completed order") photos, and capture the customer's on-screen-drawn signature at delivery — uploaded client-side directly to storage; the backend only ever persists the resulting URL/base64 string (no multer/file-upload endpoint exists or is needed)
 - View own statistics (completed orders, rating)
 - Update own profile
+
+**Driver lifecycle — three admin-controlled states (🔧 IMPLEMENTED, `constants/driver_status.js`, `sql/005_driver_and_catalog.sql`):**
+
+```mermaid
+stateDiagram-v2
+    [*] --> inactive: Admin creates driver
+    inactive --> active: Admin approves (OTP-verified)
+    active --> deactivated: Admin deactivates
+    deactivated --> active: Admin re-activates
+    active --> blocked: Admin blocks
+    deactivated --> blocked: Admin blocks
+    blocked --> active: Admin re-activates
+```
+
+| Status | Can log in? | Can go online (slide the slider)? | Who sets it |
+|---|:---:|:---:|---|
+| `inactive` | ❌ | ❌ | Default at creation, before first approval |
+| `active` | ✅ | ✅ | `PUT /api/admin/drivers/:id/approve` or `.../activate` |
+| `deactivated` | ✅ | ❌ — attempting to go online returns a specific error the app renders as a "you are deactivated, contact admin" popup, then the slider snaps back off | `PUT /api/admin/drivers/:id/deactivate` |
+| `blocked` | ❌ | N/A | `PUT /api/admin/drivers/:id/block` (renamed from the old `suspend`, same underlying behavior — login rejects it) |
 
 **Responsibilities:**
 - Keep location updated during active jobs (required for customer tracking to function)
 - Cannot self-assign jobs — dispatch is admin-controlled (📄 SRS — Admin "assigns driver;" no self-serve job board is described)
-- Must capture proof-of-service (photo + signature) at both pickup and dropoff — a **business rule**, not optional, because it's baked into the state machine (cannot reach `Pickup Completed` without it — see Section 8.3 for whether this is currently enforced or is a gap).
+- Must capture proof-of-service (photo + signature) at both pickup and dropoff — a **business rule**, not optional, because it's baked into the state machine (cannot reach `Pickup Completed` without it — see Section 8.3 for whether this is currently enforced or is a gap). 🔧 **RESOLVED:** these photos/signature are now surfaced back to the customer's tracking screen and the admin's order view (`OrderService.getOrderTracking`, `utils/orderFormatter.js`) — previously captured and saved but never shown anywhere past the driver app itself.
 
-**Data Boundary:** A driver must only see orders where `driver_id = self`. ⚠️ **GAP** (see Section 21): current `GET /api/drivers/:id/orders` should verify the caller's JWT driver identity equals `:id`.
+**Data Boundary:** A driver must only see/modify their own resources. 🔧 **RESOLVED** (previously flagged as a gap here): every driver self-service endpoint (`GET/PUT /api/drivers/:id`, `.../go-online`, `.../go-offline`, `.../update-location`, `.../orders`, `.../orders/active`, `.../orders/:orderId/status`, `.../complete-pickup`, `.../complete-delivery`, `.../statistics`) now enforces `requireSelf('id')` — the JWT's driver id must match the `:id` in the URL, or the request is rejected `403`.
 
 ### 4.3 Admin 📄 SRS §4.3 + 🔧 IMPLEMENTED
 
@@ -456,10 +478,11 @@ flowchart LR
 - Login via email/password
 - View dashboard (aggregate stats)
 - Manage users (view, view history)
-- Manage drivers (add is implicit via approval flow; approve, suspend, reactivate)
+- **Create drivers directly** (`POST /api/admin/drivers` — the only way a driver profile is created, 🔧 IMPLEMENTED), then approve (OTP-verified, client-side), activate, deactivate, or block them (three-state lifecycle, Section 4.2)
 - View/edit all bookings
 - View/edit all orders (assign driver, change status, adjust pricing, schedule pickup, cancel)
-- Manage pricing rules (distance/weight/traffic/service charge multipliers)
+- **Full CRUD over the service catalog** (🔧 IMPLEMENTED, Section 6.6): create/update/delete service types, categories, and items, including setting a per-item `basePrice` that directly overrides the weight-based pricing formula — this is what "admin controls what's listed and what it costs" means concretely in this codebase (`/api/admin/catalog/*`).
+- Manage pricing rules (distance/weight/traffic/service charge multipliers) — 💡 **still a gap for the non-catalog constants** (call-out fee, per-mile rate, manpower tiers, etc. remain code constants, not yet admin-editable — see Section 21/22)
 - Manage promotions and discounts
 - Send promotional notifications
 - View all reports (revenue, bookings, drivers, customers)
@@ -473,14 +496,16 @@ flowchart LR
 
 | Capability | Customer | Driver | Admin |
 |---|:---:|:---:|:---:|
-| Register/Login | ✅ (self) | ✅ (self, needs approval) | ✅ (bootstrap/invite) |
+| Register/Login | ✅ (self) | ✅ login only — **cannot self-register**, admin creates the account | ✅ (bootstrap/invite) |
+| Create driver account | ❌ | ❌ | ✅ (only way one is created) |
 | Create booking | ✅ | ❌ | ✅ (on behalf of customer — 💡 inferred support tool) |
 | View own bookings/orders | ✅ | ✅ (assigned only) | ✅ (all) |
 | View others' bookings/orders | ❌ | ❌ | ✅ |
 | Update booking status | ❌ (only cancel) | ✅ (assigned, forward-only) | ✅ (any transition, override) |
 | Assign driver | ❌ | ❌ | ✅ |
-| Approve/suspend driver | ❌ | ❌ | ✅ |
-| Manage pricing rules | ❌ | ❌ | ✅ |
+| Approve/activate/deactivate/block driver | ❌ | ❌ | ✅ |
+| Manage service catalog (types/categories/items/prices) | ❌ | ❌ | ✅ (🔧 IMPLEMENTED — `/api/admin/catalog/*`) |
+| Manage pricing rules (non-catalog constants) | ❌ | ❌ | ⚠️ still code constants, not admin-editable (Section 21/22) |
 | Manage promotions | ❌ | ❌ | ✅ |
 | Upload proof photos/signature | ❌ | ✅ | ❌ |
 | Process payment | ✅ (pay) | ❌ | ✅ (refund) |
@@ -603,7 +628,7 @@ Each feature below follows: **Purpose → Inputs → Outputs → Dependencies �
 | **Inputs** | Online/offline toggle; live location; profile fields (name, phone, license, vehicle type/number). |
 | **Outputs** | `is_online`, `last_online_at`, `current_latitude/longitude`, `location_updated_at` (🔧 IMPLEMENTED in `drivers` table). |
 | **Dependencies** | Admin approval gate; GPS permission on device. |
-| **Business Rules** | A driver cannot go online until admin-approved (🔧 IMPLEMENTED). A suspended driver cannot go online or receive assignments (🔧 `driver_status` enum includes `suspended`). |
+| **Business Rules** | A driver cannot go online until admin-approved (🔧 IMPLEMENTED). 🔧 **UPDATED:** the online toggle now enforces a three-state lifecycle, not just approved/not-approved — a `deactivated` driver **can** log in and view their profile but is rejected (with a specific "contact admin" error) if they try to go online; a `blocked` driver (renamed from `suspended`) cannot log in at all. See Section 4.2 for the full state diagram. |
 | **Edge Cases** | Driver forgets to go offline after finishing → 💡 inferred auto-offline after N hours of inactivity/no location updates. |
 
 ### 5.10 History (Order/Booking History)
@@ -634,9 +659,9 @@ Each feature below follows: **Purpose → Inputs → Outputs → Dependencies �
 |---|---|
 | **Purpose** | Let customers explore available services and structured items before/while booking. 📄 SRS §5, Services Screen |
 | **Inputs** | None (public, read-only) or a `serviceId` filter. |
-| **Outputs** | Nested category → subcategory → item tree with per-item modifiers (dimensions, weight). 🔧 IMPLEMENTED (`GET /api/services/templates`). |
-| **Dependencies** | Static/DB-backed catalog (Section 6). |
-| **Business Rules** | Catalog must stay in sync with what pricing/vehicle-assignment logic understands — an item shown to the customer but unrecognized by pricing is a critical bug class. |
+| **Outputs** | Nested category → subcategory → item tree with per-item modifiers (dimensions, weight). 🔧 IMPLEMENTED (`GET /api/services/templates`), now DB-backed and admin-manageable (Section 6.6) rather than a hardcoded file. |
+| **Dependencies** | DB-backed catalog via `CatalogService` (Section 6.6, Section 11.3.1) with an in-memory read cache, invalidated on every admin write. |
+| **Business Rules** | Catalog must stay in sync with what pricing/vehicle-assignment logic understands — an item shown to the customer but unrecognized by pricing is a critical bug class. Same lookup path (`CatalogService.findCatalogItem`) is used by both the browsing endpoint and the pricing engine, so this can no longer drift by construction. |
 | **Edge Cases** | Custom item (freeform name/dimensions/weight) must still be priced sensibly (📄 SRS "Custom Item" category — pricing engine must handle items without a known catalog weight). |
 
 ---
@@ -1164,7 +1189,7 @@ erDiagram
 
 **Why this is better (normalization rationale):**
 1. **Single source of truth per item** — "Coffee Table" is one row, linked to as many subcategories as legitimately apply (fixes findings #4–9).
-2. **Admin-manageable catalog** — today the catalog is hardcoded in `data/service_templates.js` (🔧 IMPLEMENTED as static JS); a normalized DB table lets Admin add/edit/retire items without a code deployment (📄 SRS implies an evolving catalog but never gives Admin catalog-management UI — flagged as a missing feature in Section 21).
+2. **Admin-manageable catalog** — ✅ RESOLVED: catalog is now DB-backed (`sql/005_driver_and_catalog.sql`) with full admin CRUD at `/api/admin/catalog/*`. `data/service_templates.js` is seed-only (`scripts/seed_catalog.js`).
 3. **Pricing multipliers become data, not code** — solves the Piano/Antique/Industrial under-pricing gap (6.2 findings) by attaching a `pricing_multiplier` to the item itself instead of hardcoding logic per category in `pricing_service.js`.
 4. **Default handling flags reduce customer error** — e.g., selecting "Grand Piano" auto-suggests `Requires Insurance` + `Requires Multiple Movers`, rather than relying on the customer to remember to tick boxes.
 
@@ -1644,7 +1669,7 @@ Request:
 | `/api/services/templates` | GET | Public | All service catalogs (category tree) |
 | `/api/services/templates/:serviceId` | GET | Public | One service's catalog |
 | `/api/services/quote` | POST | Public | Instant price preview without saving a booking |
-| `/api/admin/categories` 💡 INFERRED | GET/POST/PUT/DELETE | Bearer `admin` | CRUD for the normalized catalog (Section 6.5) — currently the catalog is hardcoded in `data/service_templates.js`, meaning **catalog changes require a code deploy**, a significant operational gap for a business that will want to add/retire items regularly |
+| `/api/admin/catalog/*` ✅ IMPLEMENTED | POST/PUT/DELETE | Bearer `admin` | Full CRUD for service types, categories (incl. attach/detach), and items (incl. `basePrice` overrides) — see `FRONTEND_INTEGRATION.md` §7.4 |
 | `/api/admin/items` 💡 INFERRED | GET/POST/PUT/DELETE | Bearer `admin` | CRUD for individual items, including `pricing_multiplier`, default weight/dimensions, handling defaults |
 
 ### 9.7 Module: Admin (`/api/admin`)
@@ -1658,8 +1683,10 @@ Request:
 | `/api/admin/users` | GET | Bearer `admin` | List all customers |
 | `/api/admin/drivers` | GET | Bearer `admin` | List all drivers |
 | `/api/admin/drivers/:id/approve` | PUT | Bearer `admin` | Allow driver login |
-| `/api/admin/drivers/:id/suspend` | PUT | Bearer `admin` | Block driver login/assignment |
-| `/api/admin/drivers/:id/activate` | PUT | Bearer `admin` | Reactivate a suspended driver |
+| `/api/admin/drivers` | POST | Bearer `admin` | Create driver (admin-only; self-register removed). Requires `profilePictureUrl`. |
+| `/api/admin/drivers/:id/deactivate` | PUT | Bearer `admin` | Driver can log in but cannot go online |
+| `/api/admin/drivers/:id/block` | PUT | Bearer `admin` | Block driver login (renamed from `suspend`) |
+| `/api/admin/drivers/:id/activate` | PUT | Bearer `admin` | Reactivate a deactivated/blocked driver (must already be approved) |
 | `/api/admin/bookings` | GET | Bearer `admin` | `?status=&userId=` filters |
 | `/api/admin/bookings/:id` | GET | Bearer `admin` | One booking |
 | `/api/admin/orders` | GET | Bearer `admin` | `?status=&userId=&driverId=` filters |
@@ -1763,6 +1790,7 @@ Request: `{ "orderId": "uuid" }` → Response: `{ "clientSecret": "pi_..._secret
 | `uploaded_images` | ❌ (embedded as JSONB `pickup_photos`/`delivery_photos` on `orders`) | See 10.4 |
 | `signatures` | ❌ (embedded as TEXT `pickup_signature`/`delivery_signature` on `orders`) | See 10.4 |
 | `promotions` | ❌ | ⚠️ GAP — Smart Promotion feature (SRS §6.7) has no persistence layer yet (Section 21) |
+| `service_types` / `service_categories` / `service_type_categories` / `service_items` | ✅ (`sql/005_driver_and_catalog.sql`) | Not in the SRS's table list at all, but required to satisfy the admin's "complete control over items/categories/prices" requirement (Section 5, Section 6.6). Replaces the previously-static `data/service_templates.js` file as the live source of truth — see 10.3's `RESOLVED GAP` note below and Section 6.6. |
 
 ### 10.3 Entity-Relationship Diagram — Current State 🔧 IMPLEMENTED
 
@@ -1773,6 +1801,11 @@ erDiagram
     DRIVERS ||--o{ ORDERS : fulfills
     BOOKINGS ||--o| ORDERS : "converts to"
     ADMINS ||--o{ ORDERS : "manages (no FK, audit only)"
+    ADMINS ||--o{ DRIVERS : "creates (no FK, audit only)"
+
+    SERVICE_TYPES ||--o{ SERVICE_TYPE_CATEGORIES : has
+    SERVICE_CATEGORIES ||--o{ SERVICE_TYPE_CATEGORIES : "attached via"
+    SERVICE_CATEGORIES ||--o{ SERVICE_ITEMS : contains
 
     USERS {
         uuid id PK
@@ -1793,8 +1826,9 @@ erDiagram
         text license_number
         text vehicle_type
         text vehicle_number
+        text profile_picture_url
         boolean is_approved_by_admin
-        enum status
+        enum status "active | inactive | deactivated | blocked"
         boolean is_online
         double current_latitude
         double current_longitude
@@ -1879,9 +1913,50 @@ erDiagram
         numeric quoted_price
         text cancellation_reason
     }
+    SERVICE_TYPES {
+        uuid id PK
+        text service_id UK "stable slug, e.g. home_move"
+        text name
+        text description
+        jsonb required_logistics
+        boolean requires_dropoff_location
+        enum pricing_model "instant | hourly | quoteOnRequest"
+        boolean is_active
+        int sort_order
+    }
+    SERVICE_CATEGORIES {
+        uuid id PK
+        text name
+        numeric pricing_multiplier
+        text note
+        boolean is_active
+        int sort_order
+    }
+    SERVICE_TYPE_CATEGORIES {
+        uuid id PK
+        uuid service_type_id FK
+        uuid category_id FK
+        int sort_order
+    }
+    SERVICE_ITEMS {
+        uuid id PK
+        uuid category_id FK
+        text name
+        numeric default_weight_kg
+        numeric base_price "nullable — admin price override"
+        boolean fragile_default
+        boolean insurance_recommended
+        jsonb modifiers
+        boolean is_active
+        int sort_order
+    }
 ```
 
 > ✅ **RESOLVED GAP (previously flagged in this section):** `bookings` originally only stored a **postcode** for collection/delivery — no house/flat/street-level address. When converted to an `order`, `pickup_location`/`delivery_location` (the fields shown to the driver) ended up containing just the bare postcode, which is not an actionable location. Fixed in `sql/004_add_address_lines.sql`: `bookings` now requires `collection_address`/`delivery_address` (real street address text) alongside the postcode, and captures Google's `collection_formatted_address`/`delivery_formatted_address` (previously computed by `maps_service.js#geocode()` then silently discarded). `orders.pickup_location`/`delivery_location` are now built from the full formatted address (falling back to `address + postcode`) instead of the postcode alone, with structured `pickup_address_line`/`pickup_postcode`/`delivery_address_line`/`delivery_postcode` columns added for driver-app UIs that want them separately.
+
+> ✅ **RESOLVED GAP (Section 6.6 / 21 "Missing admin features"):** the item/category catalog was a hardcoded `data/service_templates.js` file — adding, removing, or repricing anything required a code change and redeploy. `sql/005_driver_and_catalog.sql` adds `service_types`/`service_categories`/`service_type_categories`/`service_items`, and `data/service_templates.js` is now used exactly once, by `scripts/seed_catalog.js`, to populate them. `SERVICE_TYPE_CATEGORIES` is a join table (not a simple FK) specifically so shared categories like "Custom Item" and "Boxes & Packaging" can attach to many service types — exactly like the old static file's shared-object-reference trick — without duplicating rows. `service_items.base_price` is a new nullable column: `null` (the default, matching every seeded item) keeps the original weight-based pricing formula; once an admin sets a number, the pricing engine uses it directly (`qty × basePrice × categoryPricingMultiplier`) — see 11.3.
+
+> ✅ **RESOLVED GAP (Section 21 "driver self-registration has no admin gate before OTP"):** `drivers.profile_picture_url` is new — the admin now takes a photo of the driver during registration (`POST /api/admin/drivers`), which is required, not optional. `driver_status` gained a `deactivated` value (was: `active`/`inactive`/`suspended` only) and `suspended` was renamed to `blocked` — see the driver state machine in Section 8/11.9 for the full three-state lifecycle this enables.
 
 ### 10.4 Normalization Analysis
 
@@ -2661,8 +2736,8 @@ Web equivalent of the mobile app's Orders + Profile screens: booking history, ac
 
 | Capability | Detail |
 |---|---|
-| Add drivers | 📄 SRS says "Admin can: Add drivers" — 🔧 current implementation has drivers **self-register**, with Admin only approving; 💡 inferred: Admin should also be able to directly create a driver account (e.g., for drivers onboarded via phone/in-person, without the driver self-registering first) |
-| Activate/deactivate drivers | 🔧 IMPLEMENTED: approve / suspend / activate endpoints |
+| Add drivers | ✅ RESOLVED: `POST /api/admin/drivers` is the only creation path (self-register removed). Profile picture required. OTP-verified approve is client-side Firebase, then `PUT .../approve`. |
+| Activate/deactivate/block drivers | ✅ IMPLEMENTED: `activate` / `deactivate` / `block` (was `suspend`) — see Section 4.2 three-state lifecycle |
 | Monitor driver performance | 💡 Inferred: ratings average, completion rate, on-time rate, cancellation rate — dashboard/report view, not just raw stats |
 
 💡 **INFERRED additional driver management features**: document verification queue (license, insurance, vehicle registration uploads awaiting review before approval — the *actual* gate that should precede "approve," which today appears to be a single boolean flip with no documented evidence requirement), skill/specialism tagging (piano-certified, HGV-licensed — ties to Section 6 category-driver-requirement mapping), driver payout/earnings view (if commission-based).

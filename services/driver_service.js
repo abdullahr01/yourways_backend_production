@@ -3,6 +3,7 @@ const Order = require('../models/order_model');
 const RealtimeService = require('./realtime_service');
 const logger = require('../utils/logger');
 const { formatOrder, formatOrders } = require('../utils/orderFormatter');
+const DRIVER_STATUS = require('../constants/driver_status');
 
 const DRIVER_ACTIVE_STATUSES = [
   'confirmed',
@@ -13,13 +14,24 @@ const DRIVER_ACTIVE_STATUSES = [
 ];
 
 class DriverService {
+  /**
+   * Creates a driver profile. Only ever called by AdminService.createDriver —
+   * there is no driver self-registration endpoint. The admin fills in every
+   * detail (including a profile picture, uploaded client-side to storage —
+   * this just stores the resulting URL) and the driver starts unapproved
+   * until the admin completes the OTP-verified approve step (client-side,
+   * see docs/KNOWLEDGE_BASE.md Section 7 driver-approval flow).
+   */
   async registerDriver(data) {
     try {
-      logger.info('[DRIVER SVC] Registering driver...');
+      logger.info('[DRIVER SVC] Registering driver (admin-created)...');
       logger.info(`[DRIVER SVC] phone=${data.phone} email=${data.email ? '***' : 'n/a'}`);
 
       if (!data.name || !data.email || !data.phone) {
         throw new Error('name, email and phone are required');
+      }
+      if (!data.profilePictureUrl) {
+        throw new Error('profilePictureUrl is required — upload the driver\'s photo to storage first');
       }
 
       const existing = await Driver.findExisting({
@@ -54,10 +66,13 @@ class DriverService {
         };
       }
 
-      if (driver.status === 'suspended') {
-        throw new Error('Your account has been suspended. Contact admin.');
+      if (driver.status === DRIVER_STATUS.BLOCKED) {
+        throw new Error('Your account has been blocked. Contact admin.');
       }
 
+      // Deactivated drivers CAN log in — they're only stopped from going
+      // online (see goOnline below). The app should surface driver.status
+      // so it can show the "contact admin" messaging appropriately.
       const token = Driver.generateAuthToken(driver);
       logger.success(`[DRIVER SVC] Login OK id=${driver.id}`);
       return { success: true, driver, token };
@@ -72,7 +87,7 @@ class DriverService {
       logger.info(`[DRIVER SVC] Approving id=${driverId}`);
       const driver = await Driver.updateById(driverId, {
         isApprovedByAdmin: true,
-        status: 'active',
+        status: DRIVER_STATUS.ACTIVE,
       });
       logger.success(`[DRIVER SVC] Approved ${driver.name}`);
       return driver;
@@ -115,16 +130,32 @@ class DriverService {
     }
   }
 
+  /**
+   * Driver slides the homepage "go online" slider. Deactivated drivers can
+   * still log in but are rejected here — the app turns this specific error
+   * into the "you are deactivated, contact admin" popup the user described.
+   * Blocked drivers never reach this point since they can't log in at all.
+   */
   async goOnline(driverId) {
     try {
       logger.info(`[DRIVER SVC] goOnline id=${driverId}`);
-      const driver = await Driver.updateById(driverId, {
+      const driver = await Driver.findById(driverId);
+      if (!driver) throw new Error('Driver not found');
+
+      if (driver.status === DRIVER_STATUS.DEACTIVATED) {
+        throw new Error('Your account has been deactivated. Contact admin.');
+      }
+      if (driver.status === DRIVER_STATUS.BLOCKED) {
+        throw new Error('Your account has been blocked. Contact admin.');
+      }
+
+      const updated = await Driver.updateById(driverId, {
         isOnline: true,
         lastOnlineAt: new Date().toISOString(),
-        status: 'active',
+        status: DRIVER_STATUS.ACTIVE,
       });
       await RealtimeService.broadcastDriverStatus(driverId, true);
-      return driver;
+      return updated;
     } catch (err) {
       logger.error(`[DRIVER SVC] goOnline failed: ${err.message}`);
       throw err;
@@ -230,11 +261,14 @@ class DriverService {
   async completePickup(driverId, orderId, additionalItems = [], photos = [], comment = '', signature = '') {
     try {
       logger.info(`[DRIVER SVC] completePickup driver=${driverId} order=${orderId}`);
+      if (!Array.isArray(photos) || photos.length === 0) {
+        throw new Error('At least one pickup photo is required before completing pickup');
+      }
       const additionalData = {
         pickupCompletedAt: new Date().toISOString(),
+        pickupPhotos: photos,
       };
       if (additionalItems?.length) additionalData.additionalItems = additionalItems;
-      if (photos?.length) additionalData.pickupPhotos = photos;
       if (comment) additionalData.driverComment = comment;
       if (signature) additionalData.pickupSignature = signature;
 
@@ -248,11 +282,17 @@ class DriverService {
   async completeDelivery(driverId, orderId, photos = [], comment = '', signature = '') {
     try {
       logger.info(`[DRIVER SVC] completeDelivery driver=${driverId} order=${orderId}`);
+      if (!Array.isArray(photos) || photos.length === 0) {
+        throw new Error('At least one delivery photo is required before completing the order');
+      }
+      if (!signature) {
+        throw new Error('Customer signature is required before completing the order');
+      }
       const additionalData = {
         deliveryCompletedAt: new Date().toISOString(),
+        deliveryPhotos: photos,
+        deliverySignature: signature,
       };
-      if (photos?.length) additionalData.deliveryPhotos = photos;
-      if (signature) additionalData.deliverySignature = signature;
 
       if (comment) {
         const order = await Order.findById(orderId);

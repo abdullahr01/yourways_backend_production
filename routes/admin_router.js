@@ -20,10 +20,14 @@ router.get('/dashboard', AdminController.dashboard);
 // Users
 router.get('/users', AdminController.listUsers);
 
-// Drivers
+// Drivers — admin is the ONLY way a driver profile gets created (no
+// self-registration). Approval still requires the admin to have verified an
+// OTP client-side first (Flutter/Firebase), then call approve below.
+router.post('/drivers', AdminController.createDriver);
 router.get('/drivers', AdminController.listDrivers);
 router.put('/drivers/:id/approve', AdminController.approveDriver);
-router.put('/drivers/:id/suspend', AdminController.suspendDriver);
+router.put('/drivers/:id/block', AdminController.blockDriver);
+router.put('/drivers/:id/deactivate', AdminController.deactivateDriver);
 router.put('/drivers/:id/activate', AdminController.activateDriver);
 
 // Bookings
@@ -38,5 +42,21 @@ router.patch('/orders/:id/status', AdminController.updateOrderStatus);
 router.patch('/orders/:id/pricing', AdminController.updateOrderPricing);
 router.post('/orders/:id/schedule-pickup', AdminController.schedulePickup);
 router.post('/orders/:id/cancel', AdminController.cancelOrder);
+
+// Catalog — full admin control over what services/categories/items/prices
+// are listed on the platform (DB-backed, replaces editing data/service_templates.js).
+router.post('/catalog/service-types', AdminController.createServiceType);
+router.put('/catalog/service-types/:id', AdminController.updateServiceType);
+router.delete('/catalog/service-types/:id', AdminController.deleteServiceType);
+
+router.post('/catalog/categories', AdminController.createCategory);
+router.put('/catalog/categories/:id', AdminController.updateCategory);
+router.delete('/catalog/categories/:id', AdminController.deleteCategory);
+router.post('/catalog/categories/:categoryId/attach', AdminController.attachCategory);
+router.delete('/catalog/categories/:categoryId/service-types/:serviceTypeId', AdminController.detachCategory);
+
+router.post('/catalog/items', AdminController.createItem);
+router.put('/catalog/items/:id', AdminController.updateItem);
+router.delete('/catalog/items/:id', AdminController.deleteItem);
 
 module.exports = router;
