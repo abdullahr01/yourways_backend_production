@@ -16,6 +16,15 @@ router.post('/logout', requireAuth('driver'), DriverController.logout);
 // Driver self endpoints — requireSelf ensures a driver's token can only
 // read/modify THEIR OWN record, never another driver's (previously any
 // authenticated driver could edit/query any :id by just changing the URL).
+// Status must be registered before bare /:id so Express doesn't treat
+// "status" as an id. Own-id only — used by the driver app for banners/slider.
+router.get(
+  '/:id/status',
+  requireAuth('driver'),
+  requireSelf('id'),
+  DriverController.getStatus
+);
+
 // GET /:id stays public/unauthenticated on purpose — it's the driver's
 // public-facing profile shown to customers during order tracking.
 router.get('/:id', DriverController.getById);

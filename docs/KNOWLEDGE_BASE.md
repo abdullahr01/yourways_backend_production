@@ -1317,8 +1317,9 @@ sequenceDiagram
     DApp->>Store: Upload images
     D->>DApp: Capture customer signature
     DApp->>Store: Upload signature
-    DApp->>API: POST complete-delivery { photos, signature, comment }
-    API->>DB: UPDATE status = Order Completed
+    D->>DApp: Show waiver / T&Cs; customer checks box
+    DApp->>API: POST complete-delivery { photos, signature, comment, deliveryWaiverAccepted: true }
+    API->>DB: UPDATE status = Order Completed, delivery_waiver_accepted = true
     API->>RT: Publish status change
     RT-->>C: "Order Completed" push notification
 ```
@@ -1577,6 +1578,7 @@ Response: { "user": {...}, "token": "<YourWays JWT>", "isNewAccount": true }
 | `/api/drivers/register` | POST | Public | Register driver (starts unapproved) |
 | `/api/drivers/login` | POST | Public | Login by phone (blocked until admin-approved) |
 | `/api/drivers/:id` | GET | Public 🔶 | Driver profile (⚠️ should require auth — public exposure of driver PII is a gap, Section 17) |
+| `/api/drivers/:id/status` | GET | Bearer `driver` | Lifecycle + online status (`status`, `isOnline`, …) |
 | `/api/drivers/:id` | PUT | Bearer `driver`\|`user` | Update profile |
 | `/api/drivers/:id/go-online` | POST | Bearer `driver` | Mark available |
 | `/api/drivers/:id/go-offline` | POST | Bearer `driver` | Mark unavailable |
@@ -1585,7 +1587,7 @@ Response: { "user": {...}, "token": "<YourWays JWT>", "isNewAccount": true }
 | `/api/drivers/:id/orders/active` | GET | Bearer `driver` | Active-only assigned orders |
 | `/api/drivers/:id/orders/:orderId/status` | PATCH | Bearer `driver` | Forward-only status transition |
 | `/api/drivers/:id/orders/:orderId/complete-pickup` | POST | Bearer `driver` | Photos + signature + comment + additionalItems |
-| `/api/drivers/:id/orders/:orderId/complete-delivery` | POST | Bearer `driver` | Photos + signature + comment |
+| `/api/drivers/:id/orders/:orderId/complete-delivery` | POST | Bearer `driver` | Photos + signature + `deliveryWaiverAccepted: true` + comment |
 | `/api/drivers/:id/statistics` | GET | Bearer `driver` | Completed orders, rating |
 | `/api/drivers/:id/documents` 💡 INFERRED | POST/GET | Bearer `driver` | Upload/view license, insurance, vehicle registration documents for compliance |
 | `/api/drivers/:id/ratings` 💡 INFERRED | GET | Bearer `driver`\|`admin` | List of per-order customer ratings/comments |
@@ -1604,6 +1606,20 @@ Request:
 ```
 **Validation:** `photos` array required, min 1 item (💡 inferred — SRS implies mandatory proof capture); `signature` required (URL or base64); order must currently be in `outForPickup` status (state-machine guard) and `driver_id` must equal caller.
 **Errors:** `409` invalid state transition · `400` missing photos/signature · `403` not the assigned driver.
+
+**`POST /api/drivers/:id/orders/:orderId/complete-delivery`**
+
+Request:
+```json
+{
+  "photos": ["https://storage/.../delivery1.jpg"],
+  "signature": "data:image/png;base64,...",
+  "comment": "Delivered",
+  "deliveryWaiverAccepted": true
+}
+```
+**Validation:** `photos` min 1; `signature` required; `deliveryWaiverAccepted` must be `true` (customer checked the existing T&Cs / waiver on the driver screen after signing — `sql/006_delivery_waiver.sql`). Order must be assigned to the caller.
+**Errors:** `400` missing photos / signature / waiver · `403` not the assigned driver.
 
 ### 9.4 Module: Bookings (`/api/bookings`)
 

@@ -69,6 +69,7 @@ const formatOrder = (order) => {
     deliveryPhotos: order.deliveryPhotos || [],
     pickupSignature: order.pickupSignature || null,
     deliverySignature: order.deliverySignature || null,
+    deliveryWaiverAccepted: !!order.deliveryWaiverAccepted,
     driverComment: order.driverComment || null,
     userId: order.userId,
     bookingId: order.bookingId,

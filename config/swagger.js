@@ -312,6 +312,22 @@ const swaggerDefinition = {
         responses: { 200: { description: 'Updated' } },
       },
     },
+    '/api/drivers/{id}/status': {
+      get: {
+        tags: ['Drivers'],
+        summary: 'Get driver status (lifecycle + online)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          200: {
+            description:
+              '{ driverId, status, isOnline, isApprovedByAdmin, lastOnlineAt } — status is active|deactivated|blocked|inactive',
+          },
+        },
+      },
+    },
     '/api/drivers/{id}/go-online': {
       post: {
         tags: ['Drivers'],
@@ -424,10 +440,16 @@ const swaggerDefinition = {
             'application/json': {
               schema: {
                 type: 'object',
+                required: ['photos', 'signature', 'deliveryWaiverAccepted'],
                 properties: {
                   photos: { type: 'array', items: { type: 'string' } },
                   signature: { type: 'string' },
                   comment: { type: 'string' },
+                  deliveryWaiverAccepted: {
+                    type: 'boolean',
+                    description:
+                      'Must be true — customer accepted the delivery waiver / T&Cs on the driver device after signing',
+                  },
                 },
               },
             },

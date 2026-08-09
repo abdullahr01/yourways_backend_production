@@ -109,6 +109,28 @@ class DriverService {
     }
   }
 
+  /**
+   * Lightweight status payload for the driver app (homepage slider / banners).
+   * `status` = admin lifecycle; `isOnline` = driver's own online slider.
+   */
+  async getDriverStatus(driverId) {
+    try {
+      logger.info(`[DRIVER SVC] getStatus=${driverId}`);
+      const driver = await Driver.findById(driverId);
+      if (!driver) throw new Error('Driver not found');
+      return {
+        driverId: driver.id || driver._id,
+        status: driver.status,
+        isOnline: !!driver.isOnline,
+        isApprovedByAdmin: !!driver.isApprovedByAdmin,
+        lastOnlineAt: driver.lastOnlineAt || null,
+      };
+    } catch (err) {
+      logger.error(`[DRIVER SVC] getStatus failed: ${err.message}`);
+      throw err;
+    }
+  }
+
   async getAll() {
     try {
       logger.info('[DRIVER SVC] getAll');
@@ -279,7 +301,14 @@ class DriverService {
     }
   }
 
-  async completeDelivery(driverId, orderId, photos = [], comment = '', signature = '') {
+  async completeDelivery(
+    driverId,
+    orderId,
+    photos = [],
+    comment = '',
+    signature = '',
+    deliveryWaiverAccepted = false
+  ) {
     try {
       logger.info(`[DRIVER SVC] completeDelivery driver=${driverId} order=${orderId}`);
       if (!Array.isArray(photos) || photos.length === 0) {
@@ -288,10 +317,18 @@ class DriverService {
       if (!signature) {
         throw new Error('Customer signature is required before completing the order');
       }
+      // Waiver / T&Cs are shown on the driver screen after the customer signs;
+      // customer must check the box before the order can be completed.
+      if (deliveryWaiverAccepted !== true) {
+        throw new Error(
+          'Customer must accept the delivery waiver / terms and conditions before completing the order'
+        );
+      }
       const additionalData = {
         deliveryCompletedAt: new Date().toISOString(),
         deliveryPhotos: photos,
         deliverySignature: signature,
+        deliveryWaiverAccepted: true,
       };
 
       if (comment) {

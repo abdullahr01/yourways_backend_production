@@ -87,6 +87,9 @@ const mapOrder = (row) => {
     deliveryPhotos: row.delivery_photos || [],
     pickupSignature: row.pickup_signature,
     deliverySignature: row.delivery_signature,
+    // Customer checked the delivery waiver / T&Cs on the driver device
+    // before the order was marked completed (see completeDelivery).
+    deliveryWaiverAccepted: !!row.delivery_waiver_accepted,
     driverComment: row.driver_comment,
     driver,
     driverId: row.driver_id,
@@ -145,6 +148,7 @@ const toDbInsert = (data) =>
     delivery_photos: data.deliveryPhotos || data.delivery_photos || [],
     pickup_signature: data.pickupSignature || data.pickup_signature || null,
     delivery_signature: data.deliverySignature || data.delivery_signature || null,
+    delivery_waiver_accepted: data.deliveryWaiverAccepted ?? data.delivery_waiver_accepted ?? false,
     driver_comment: data.driverComment || data.driver_comment || null,
     total_price: data.totalPrice ?? data.total_price ?? 0,
     quoted_price: data.quotedPrice ?? data.quoted_price ?? null,
@@ -200,6 +204,7 @@ const toDbUpdate = (data) => {
     delivery_photos: data.deliveryPhotos ?? data.delivery_photos,
     pickup_signature: data.pickupSignature ?? data.pickup_signature,
     delivery_signature: data.deliverySignature ?? data.delivery_signature,
+    delivery_waiver_accepted: data.deliveryWaiverAccepted ?? data.delivery_waiver_accepted,
     driver_comment: data.driverComment ?? data.driver_comment,
     total_price: data.totalPrice ?? data.total_price,
     quoted_price: data.quotedPrice ?? data.quoted_price,

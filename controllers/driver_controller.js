@@ -76,6 +76,21 @@ class DriverController {
     }
   }
 
+  async getStatus(req, res) {
+    try {
+      const { id } = req.params;
+      logger.info(`[DRIVER CTRL] Get status: driver=${id}`);
+
+      const status = await DriverService.getDriverStatus(id);
+
+      logger.success(`[SUCCESS] ✅ Driver status fetched: ${status.status} online=${status.isOnline}`);
+      successResponse(res, 200, 'Driver status fetched successfully', status);
+    } catch (err) {
+      logger.error(`[ERROR] ❌ Get driver status failed: ${err.message}`);
+      errorResponse(res, 404, 'Driver not found', err);
+    }
+  }
+
   async getAll(req, res) {
     try {
       logger.info('[INFO] 📋 Fetching all drivers');
@@ -267,7 +282,7 @@ class DriverController {
   async completeDelivery(req, res) {
     try {
       const { id, orderId } = req.params;
-      const { photos, comment, signature } = req.body;
+      const { photos, comment, signature, deliveryWaiverAccepted } = req.body;
 
       logger.info(`[DRIVER CTRL] Complete delivery: driver=${id} order=${orderId}`);
 
@@ -276,9 +291,10 @@ class DriverController {
         orderId,
         photos,
         comment,
-        signature
+        signature,
+        deliveryWaiverAccepted
       );
-      
+
       logger.success(`[SUCCESS] ✅ Delivery completed: ${order.orderId}`);
       successResponse(res, 200, 'Delivery completed successfully', order);
     } catch (err) {
