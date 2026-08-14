@@ -19,8 +19,10 @@ const mapDriver = (row) => {
     licenseNumber: row.license_number ?? null,
     vehicleType: row.vehicle_type ?? null,
     vehicleNumber: row.vehicle_number ?? null,
-    // Uploaded client-side (admin panel) directly to storage; we only ever
-    // store the resulting URL — see KB Section 13/22 upload convention.
+    // Uploaded by the admin app via POST /api/uploads/driver-photo, which puts
+    // it in the PUBLIC driver-photos bucket and returns a permanent URL — that
+    // URL is all we store. Public because customers see the driver's photo on
+    // the tracking screen.
     profilePictureUrl: row.profile_picture_url ?? null,
     isApprovedByAdmin: row.is_approved_by_admin,
     status: row.status,

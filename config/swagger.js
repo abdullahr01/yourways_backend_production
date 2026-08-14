@@ -17,7 +17,12 @@ const swaggerDefinition = {
       '2. `POST /api/bookings/{id}/calculate-price` — show the quote\n' +
       '3. `POST /api/payments/create-intent` — server prices it and returns a Stripe `clientSecret`\n' +
       '4. Client confirms the card with the Stripe SDK (card details never touch this API)\n' +
-      '5. Stripe webhook (or `POST /api/payments/confirm`) marks it paid and **creates the order**',
+      '5. Stripe webhook (or `POST /api/payments/confirm`) marks it paid and **creates the order**\n\n' +
+      '**Images:** upload through `/api/uploads/*` — the apps never talk to Supabase Storage directly.\n' +
+      '- Driver photos go to a **public** bucket, so you store and render the returned `url` as-is.\n' +
+      '- Pickup/delivery proof goes to a **private** bucket, so you store the returned `storageKey`. ' +
+      'Whenever an order is read back, those keys come out as signed URLs valid for one hour — never ' +
+      'cache them, re-read the order instead.',
   },
   servers: [
     {
@@ -409,6 +414,9 @@ const swaggerDefinition = {
       post: {
         tags: ['Drivers'],
         summary: 'Complete pickup',
+        description:
+          'Upload the photos first via `POST /api/uploads/order-proof/{orderId}?kind=pickup` and send the ' +
+          '`storageKeys` it returns. References that do not belong to this order are rejected.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
@@ -420,8 +428,16 @@ const swaggerDefinition = {
               schema: {
                 type: 'object',
                 properties: {
-                  photos: { type: 'array', items: { type: 'string' } },
-                  signature: { type: 'string' },
+                  photos: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Storage keys from the upload endpoint. At least 1, at most 12.',
+                    example: ['order-proofs/<orderId>/pickup/1712345678-0-a1b2c3d4.jpg'],
+                  },
+                  signature: {
+                    type: 'string',
+                    description: 'Storage key from `?kind=pickupSignature`',
+                  },
                   comment: { type: 'string' },
                   additionalItems: { type: 'array', items: { type: 'object' } },
                 },
@@ -429,13 +445,20 @@ const swaggerDefinition = {
             },
           },
         },
-        responses: { 200: { description: 'Pickup completed' } },
+        responses: {
+          200: { description: 'Pickup completed' },
+          400: { description: 'No photos, or a photo reference that is not this order\'s' },
+        },
       },
     },
     '/api/drivers/{id}/orders/{orderId}/complete-delivery': {
       post: {
         tags: ['Drivers'],
         summary: 'Complete delivery',
+        description:
+          'Upload the photos and the customer\'s signature first via ' +
+          '`POST /api/uploads/order-proof/{orderId}` (`kind=delivery`, then `kind=deliverySignature`) and ' +
+          'send the `storageKeys` it returns. References that do not belong to this order are rejected.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
@@ -448,8 +471,16 @@ const swaggerDefinition = {
                 type: 'object',
                 required: ['photos', 'signature', 'deliveryWaiverAccepted'],
                 properties: {
-                  photos: { type: 'array', items: { type: 'string' } },
-                  signature: { type: 'string' },
+                  photos: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Storage keys from `?kind=delivery`. At least 1, at most 12.',
+                    example: ['order-proofs/<orderId>/delivery/1712345678-0-a1b2c3d4.jpg'],
+                  },
+                  signature: {
+                    type: 'string',
+                    description: 'Storage key from `?kind=deliverySignature`',
+                  },
                   comment: { type: 'string' },
                   deliveryWaiverAccepted: {
                     type: 'boolean',
@@ -461,7 +492,13 @@ const swaggerDefinition = {
             },
           },
         },
-        responses: { 200: { description: 'Delivery completed' } },
+        responses: {
+          200: { description: 'Delivery completed' },
+          400: {
+            description:
+              'Missing photos/signature/waiver, or a reference that is not this order\'s',
+          },
+        },
       },
     },
     '/api/drivers/logout': {
@@ -937,7 +974,8 @@ const swaggerDefinition = {
         tags: ['Admin'],
         summary: 'Create driver (admin-only — no self-registration)',
         description:
-          'Creates an unapproved driver. Admin app verifies OTP client-side (Firebase) then calls approve. profilePictureUrl is required.',
+          'Creates an unapproved driver. Admin app verifies OTP client-side (Firebase) then calls approve. ' +
+          'profilePictureUrl is required — get it from `POST /api/uploads/driver-photo` first.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -955,7 +993,10 @@ const swaggerDefinition = {
                   licenseNumber: { type: 'string' },
                   vehicleType: { type: 'string' },
                   vehicleNumber: { type: 'string' },
-                  profilePictureUrl: { type: 'string', description: 'URL after client-side upload to storage' },
+                  profilePictureUrl: {
+                    type: 'string',
+                    description: 'The `url` returned by POST /api/uploads/driver-photo',
+                  },
                 },
               },
             },
@@ -1495,6 +1536,126 @@ const swaggerDefinition = {
           400: { description: 'Not refundable / amount out of range' },
           404: { description: 'Payment not found' },
           409: { description: 'Already fully refunded' },
+        },
+      },
+    },
+    '/api/uploads/limits': {
+      get: {
+        tags: ['Uploads'],
+        summary: 'Size / type limits the pickers should enforce',
+        description:
+          'Auth: none. Read these instead of hard-coding limits in the apps, so the client-side check ' +
+          'can never drift from what the server actually accepts.',
+        responses: {
+          200: {
+            description:
+              '{ maxFileBytes, maxFileMb, allowedMimeTypes[], maxFilesPerRequest, fieldName }',
+          },
+        },
+      },
+    },
+    '/api/uploads/driver-photo': {
+      post: {
+        tags: ['Uploads'],
+        summary: 'Upload a driver profile photo (admin)',
+        description:
+          'Auth: **admin** — admins are the only ones who create or edit drivers.\n\n' +
+          'Goes into the PUBLIC `driver-photos` bucket and returns a permanent URL. Pass that URL ' +
+          'straight into `POST /api/admin/drivers` as `profilePictureUrl` (or `PUT /api/drivers/{id}`, ' +
+          'which also deletes the photo it replaces).\n\n' +
+          'The file is validated by its magic bytes, not the declared Content-Type, so renaming a ' +
+          '`.exe` to `.png` does not get past it.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                properties: {
+                  file: { type: 'string', format: 'binary', description: 'JPEG / PNG / WebP, max 10 MB' },
+                  driverId: {
+                    type: 'string',
+                    format: 'uuid',
+                    description:
+                      'Optional. Only when replacing an existing driver\'s photo — files it under that ' +
+                      'driver instead of `pending/`.',
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: { description: '{ url, storageKey, contentType, bytes } — `url` is what you store' },
+          400: { description: 'No file, or not a JPEG/PNG/WebP' },
+          401: { description: 'No token' },
+          403: { description: 'Not an admin' },
+          413: { description: 'File larger than 10 MB' },
+        },
+      },
+    },
+    '/api/uploads/order-proof/{orderId}': {
+      post: {
+        tags: ['Uploads'],
+        summary: 'Upload proof of pickup / delivery for one order (driver)',
+        description:
+          'Auth: **driver** assigned to this order (admins may also upload, for support cases). Any ' +
+          'other driver gets 403 — otherwise a driver could write photos into another driver\'s job.\n\n' +
+          'Goes into the PRIVATE `order-proofs` bucket, so what comes back is a **storage key**, not a ' +
+          'public URL. Store the keys, don\'t try to render them: submit them to ' +
+          '`POST /api/drivers/{id}/orders/{orderId}/complete-pickup` or `.../complete-delivery`, which ' +
+          'reject any reference that does not belong to that order. Use the returned `previewUrl` ' +
+          '(short-lived) to show a thumbnail in the driver app straight away.\n\n' +
+          'When the order is read back later (tracking, order history, admin), the stored keys are ' +
+          'automatically returned as signed URLs valid for one hour.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'orderId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+            description: 'The order UUID (`order.id`), same id used by the driver order endpoints',
+          },
+          {
+            name: 'kind',
+            in: 'query',
+            required: true,
+            schema: {
+              type: 'string',
+              enum: ['pickup', 'delivery', 'pickupSignature', 'deliverySignature'],
+            },
+            description: 'Signature kinds accept exactly one file',
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                properties: {
+                  files: {
+                    type: 'array',
+                    items: { type: 'string', format: 'binary' },
+                    description: 'Up to 8 images per request, 10 MB each. `file` also works.',
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description:
+              '{ orderId, kind, storageKeys[], files[{ storageKey, previewUrl }] } — submit `storageKeys`',
+          },
+          400: { description: 'No file, unknown kind, or not a JPEG/PNG/WebP' },
+          401: { description: 'No token' },
+          403: { description: 'Order is not assigned to this driver' },
+          404: { description: 'Order not found' },
+          413: { description: 'File larger than 10 MB' },
         },
       },
     },

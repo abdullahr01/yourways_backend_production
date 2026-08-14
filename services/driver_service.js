@@ -3,6 +3,7 @@ const Order = require('../models/order_model');
 const RealtimeService = require('./realtime_service');
 const logger = require('../utils/logger');
 const { formatOrder, formatOrders } = require('../utils/orderFormatter');
+const { isOrderProofKeyFor, keyFromPublicUrl, removeByKey } = require('../config/storage');
 const DRIVER_STATUS = require('../constants/driver_status');
 
 const DRIVER_ACTIVE_STATUSES = [
@@ -13,12 +14,45 @@ const DRIVER_ACTIVE_STATUSES = [
   'outForDropOff',
 ];
 
+const MAX_PROOF_PHOTOS = 12;
+
+/**
+ * Proof references must point at this order's own folder in the private bucket
+ * (what POST /api/uploads/order-proof/:orderId returns). Without this check a
+ * driver could attach another order's photos, or an off-site URL that the
+ * customer's app would then render inside their order history.
+ *
+ * Plain https URLs are still accepted so rows written before the upload
+ * endpoints existed keep working.
+ */
+const normalizeProofRefs = (orderId, values, label) => {
+  const refs = (values || [])
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .filter(Boolean);
+
+  if (refs.length > MAX_PROOF_PHOTOS) {
+    throw new Error(`At most ${MAX_PROOF_PHOTOS} ${label} photos can be attached to an order`);
+  }
+
+  for (const ref of refs) {
+    if (!isOrderProofKeyFor(orderId, ref) && !ref.startsWith('https://')) {
+      throw new Error(
+        `Invalid ${label} photo reference — upload each photo to ` +
+          `POST /api/uploads/order-proof/${orderId} and submit the storageKey it returns`
+      );
+    }
+  }
+
+  return refs;
+};
+
 class DriverService {
   /**
    * Creates a driver profile. Only ever called by AdminService.createDriver —
    * there is no driver self-registration endpoint. The admin fills in every
-   * detail (including a profile picture, uploaded client-side to storage —
-   * this just stores the resulting URL) and the driver starts unapproved
+   * detail (including a profile picture, which the admin app uploads first via
+   * POST /api/uploads/driver-photo — this just stores the returned URL) and the
+   * driver starts unapproved
    * until the admin completes the OTP-verified approve step (client-side,
    * see docs/KNOWLEDGE_BASE.md Section 7 driver-approval flow).
    */
@@ -31,7 +65,9 @@ class DriverService {
         throw new Error('name, email and phone are required');
       }
       if (!data.profilePictureUrl) {
-        throw new Error('profilePictureUrl is required — upload the driver\'s photo to storage first');
+        throw new Error(
+          'profilePictureUrl is required — upload the photo to POST /api/uploads/driver-photo first'
+        );
       }
 
       const existing = await Driver.findExisting({
@@ -144,7 +180,18 @@ class DriverService {
   async updateDriver(driverId, updateData) {
     try {
       logger.info(`[DRIVER SVC] update id=${driverId} fields=${Object.keys(updateData).join(',')}`);
+
+      // Replacing the photo should not leave the old file in the bucket forever.
+      const nextPhoto = updateData.profilePictureUrl ?? updateData.profile_picture_url;
+      const previousPhoto = nextPhoto ? (await Driver.findById(driverId))?.profilePictureUrl : null;
+
       const driver = await Driver.updateById(driverId, updateData);
+
+      if (previousPhoto && previousPhoto !== nextPhoto) {
+        const staleKey = keyFromPublicUrl(previousPhoto);
+        if (staleKey) await removeByKey(staleKey);
+      }
+
       return driver;
     } catch (err) {
       logger.error(`[DRIVER SVC] update failed: ${err.message}`);
@@ -286,13 +333,20 @@ class DriverService {
       if (!Array.isArray(photos) || photos.length === 0) {
         throw new Error('At least one pickup photo is required before completing pickup');
       }
+      const pickupPhotos = normalizeProofRefs(orderId, photos, 'pickup');
+      if (pickupPhotos.length === 0) {
+        throw new Error('At least one pickup photo is required before completing pickup');
+      }
+
       const additionalData = {
         pickupCompletedAt: new Date().toISOString(),
-        pickupPhotos: photos,
+        pickupPhotos,
       };
       if (additionalItems?.length) additionalData.additionalItems = additionalItems;
       if (comment) additionalData.driverComment = comment;
-      if (signature) additionalData.pickupSignature = signature;
+      if (signature) {
+        [additionalData.pickupSignature] = normalizeProofRefs(orderId, [signature], 'pickup signature');
+      }
 
       return await this.updateOrderStatus(driverId, orderId, 'pickupCompleted', additionalData);
     } catch (err) {
@@ -324,10 +378,16 @@ class DriverService {
           'Customer must accept the delivery waiver / terms and conditions before completing the order'
         );
       }
+      const deliveryPhotos = normalizeProofRefs(orderId, photos, 'delivery');
+      if (deliveryPhotos.length === 0) {
+        throw new Error('At least one delivery photo is required before completing the order');
+      }
+      const [deliverySignature] = normalizeProofRefs(orderId, [signature], 'delivery signature');
+
       const additionalData = {
         deliveryCompletedAt: new Date().toISOString(),
-        deliveryPhotos: photos,
-        deliverySignature: signature,
+        deliveryPhotos,
+        deliverySignature,
         deliveryWaiverAccepted: true,
       };
 

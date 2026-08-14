@@ -15,6 +15,8 @@ const adminRoutes = require('./routes/admin_router');
 const mapsRoutes = require('./routes/maps_router');
 const paymentRoutes = require('./routes/payment_router');
 const paymentWebhookRoutes = require('./routes/payment_webhook_router');
+const uploadRoutes = require('./routes/upload_router');
+const signStorageUrls = require('./middleware/signStorageUrls');
 
 const app = express();
 
@@ -48,6 +50,11 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(morgan('combined'));
 
+// Proof-of-delivery photos live in a private bucket, so the keys stored on
+// orders are swapped for short-lived signed URLs as responses go out. Sits above
+// the routes so no endpoint can forget to do it.
+app.use(signStorageUrls);
+
 // Log every incoming request
 app.use((req, res, next) => {
   logger.info(`[REQUEST] ${req.method} ${req.originalUrl} | IP: ${req.ip}`);
@@ -78,8 +85,11 @@ app.get('/', (req, res) => {
       admin: '/api/admin',
       maps: '/api/maps',
       payments: '/api/payments',
+      uploads: '/api/uploads',
     },
     payments: 'Stripe — a booking must be paid before it becomes an order',
+    storage:
+      'Supabase Storage — driver-photos (public URLs), order-proofs (private, signed URLs on read)',
     realtime: 'Supabase Realtime broadcast channels: driver-<id> (location/status), order-<id> (update)',
   });
 });
@@ -101,6 +111,7 @@ app.use('/api/services', serviceRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/maps', mapsRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/uploads', uploadRoutes);
 
 logger.info('[APP] All routes registered');
 

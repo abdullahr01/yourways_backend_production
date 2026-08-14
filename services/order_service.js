@@ -223,9 +223,10 @@ class OrderService {
         deliveryPostcode: order.deliveryPostcode,
         pickupCoordinates: order.pickupCoordinates,
         deliveryCoordinates: order.deliveryCoordinates,
-        // Proof-of-delivery — captured by the driver app at pickup/delivery
-        // (client uploads to storage, backend only stores the URL/string).
-        // Previously captured but never surfaced on the tracking screen.
+        // Proof-of-delivery — captured by the driver app at pickup/delivery via
+        // POST /api/uploads/order-proof/:orderId. Stored as private storage
+        // keys; middleware/signStorageUrls.js turns them into short-lived
+        // signed URLs on the way out.
         pickupPhotos: order.pickupPhotos || [],
         deliveryPhotos: order.deliveryPhotos || [],
         pickupSignature: order.pickupSignature || null,
