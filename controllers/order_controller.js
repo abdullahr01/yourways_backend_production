@@ -41,6 +41,9 @@ class OrderController {
    * paying once bookings required payment. It survives as an ops tool for
    * manually entered jobs (e.g. a booking taken over the phone), where payment
    * is collected outside the app; such orders keep paymentStatus 'unpaid'.
+   *
+   * Still subject to the one-active-order rule (409). Pass
+   * `allowConcurrentOrder: true` to override it deliberately.
    * POST /api/orders/create
    */
   async create(req, res) {
@@ -59,7 +62,8 @@ class OrderController {
       return successResponse(res, 201, 'Order created successfully', order);
     } catch (err) {
       logger.error(`❌ Order creation failed: ${err.message}`);
-      return errorResponse(res, 400, 'Order creation failed', err.message);
+      // 409 when the customer already has an order in progress.
+      return errorResponse(res, err.statusCode || 400, 'Order creation failed', err.message);
     }
   }
 

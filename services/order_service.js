@@ -56,6 +56,13 @@ class OrderService {
         throw err;
       }
 
+      // Deliberately NOT gated by the one-active-order rule. Reaching this line
+      // means the money is already captured, so refusing would leave the
+      // customer paid-up with no job. The rule is applied before payment, in
+      // createPaymentIntentForBooking. In the rare race where two bookings get
+      // paid moments apart, both orders are honoured and the admin sees two
+      // active jobs rather than the customer losing one.
+
       // The driver must see a real, actionable address — never a bare
       // postcode. Prefer Google's canonical formatted address (captured at
       // booking time, see booking_service.js#createBooking); fall back to the
@@ -132,15 +139,18 @@ class OrderService {
     try {
       logger.info('[ORDER SVC] Direct create order...');
 
-      if (orderData.userId) {
-        const existingActive = await this.getActiveOrderForUser(orderData.userId);
-        if (existingActive) {
-          throw new Error(
-            `You already have an active order (${existingActive.orderId}, status: ${existingActive.status}). ` +
-              `Please wait until it is completed or cancelled before creating a new request.`
-          );
-        }
+      // Admin-only endpoint (phone bookings, ops fixes). It still respects the
+      // one-active-order rule so a manually entered job can't quietly put a
+      // customer on two moves at once — but an admin who genuinely needs to can
+      // say so explicitly.
+      if (orderData.allowConcurrentOrder === true) {
+        logger.warn(
+          `[ORDER SVC] one-active-order rule overridden by admin for user ${orderData.userId}`
+        );
+      } else {
+        await this.assertNoActiveOrder(orderData.userId);
       }
+      delete orderData.allowConcurrentOrder;
 
       // Best-effort geocoding when coordinates aren't already supplied.
       if (!orderData.pickupCoordinates && orderData.pickupLocation) {
@@ -303,14 +313,65 @@ class OrderService {
   }
 
   /**
-   * Single-order existence check backing the "one active request at a time"
-   * rule (booking_service.js#assertNoActiveRequest). Returns the raw (not
-   * formatted-for-driver) order so callers can read orderId/status directly.
+   * Single-order existence check backing the one-active-order rule. Returns the
+   * raw (not formatted-for-driver) order so callers can read orderId/status
+   * directly.
    */
   async getActiveOrderForUser(userId) {
     if (!userId) return null;
     const orders = await Order.findMany({ userId, statusIn: ACTIVE_STATUSES }, 1);
     return orders[0] || null;
+  }
+
+  /**
+   * Business rule: a customer may have as many bookings as they like, but only
+   * ONE order in progress. A booking is just a saved quote; an order is a job
+   * the operation has to physically staff, and the customer can only be moved
+   * one job at a time.
+   *
+   * Where this is enforced matters. It runs *before the customer pays*
+   * (payment_service.js#createPaymentIntentForBooking), never on the conversion
+   * that happens afterwards — `createOrderFromBooking` and
+   * `submitBooking` both require a succeeded payment to run at all, so
+   * refusing them would mean taking someone's money and then denying them the
+   * job. Once the money is in, the order gets created.
+   *
+   * `excludeBookingId` is the booking being paid for, so it doesn't count
+   * itself as the blocker.
+   */
+  async assertNoActiveOrder(userId, { excludeBookingId = null } = {}) {
+    if (!userId) return;
+
+    const activeOrder = await this.getActiveOrderForUser(userId);
+    if (activeOrder) {
+      logger.warn(
+        `[ORDER SVC] Blocked — user ${userId} already has active order ${activeOrder.orderId} (${activeOrder.status})`
+      );
+      const err = new Error(
+        `You already have an order in progress (${activeOrder.orderId}, status: ${activeOrder.status}). ` +
+          `You can keep adding bookings, but they can only be paid for once this order is completed or cancelled.`
+      );
+      err.statusCode = 409;
+      throw err;
+    }
+
+    // A booking sitting at 'submitted' has been paid but its order row hasn't
+    // been written yet (the conversion half failed and is awaiting retry).
+    // There is no order to find, yet the customer is already committed to a
+    // job, so it has to count.
+    const submitted = await Booking.findMany({ userId, statusIn: ['submitted'] }, 5);
+    const other = submitted.find((b) => b.id !== excludeBookingId);
+    if (other) {
+      logger.warn(
+        `[ORDER SVC] Blocked — user ${userId} has paid booking ${other.id} still awaiting its order`
+      );
+      const err = new Error(
+        'You have already paid for another booking that is still being turned into an order. ' +
+          'Please wait a moment and try again.'
+      );
+      err.statusCode = 409;
+      throw err;
+    }
   }
 
   async updateOrderStatus(orderId, newStatus) {

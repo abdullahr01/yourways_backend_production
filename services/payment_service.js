@@ -102,9 +102,11 @@ class PaymentService {
       throw badRequest('Terms must be accepted before payment');
     }
 
-    // Don't take money for a request that could never be submitted — the
-    // one-active-request rule would reject the conversion afterwards.
-    await BookingService.assertNoActiveRequest(booking.userId, { excludeBookingId: booking.id });
+    // THE one-active-order gate. It has to be here, before any money moves:
+    // the customer may hold any number of bookings, but paying for one is what
+    // commits them to a job, and they can only have one job in progress. Every
+    // step after payment honours the charge rather than re-checking this.
+    await OrderService.assertNoActiveOrder(booking.userId, { excludeBookingId: booking.id });
 
     // Authoritative price. Recalculated here rather than trusting the stored
     // value, then persisted so the booking, the payment, and the eventual

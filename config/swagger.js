@@ -18,6 +18,9 @@ const swaggerDefinition = {
       '3. `POST /api/payments/create-intent` — server prices it and returns a Stripe `clientSecret`\n' +
       '4. Client confirms the card with the Stripe SDK (card details never touch this API)\n' +
       '5. Stripe webhook (or `POST /api/payments/confirm`) marks it paid and **creates the order**\n\n' +
+      '**One order at a time:** a customer can save up as many bookings as they want, but step 3 returns ' +
+      '`409` while they already have an order in progress. Nothing after step 3 re-checks it, so no one is ' +
+      'ever charged for a job we then refuse.\n\n' +
       '**Images:** upload through `/api/uploads/*` — the apps never talk to Supabase Storage directly.\n' +
       '- Driver photos go to a **public** bucket, so you store and render the returned `url` as-is.\n' +
       '- Pickup/delivery proof goes to a **private** bucket, so you store the returned `storageKey`. ' +
@@ -572,7 +575,9 @@ const swaggerDefinition = {
         tags: ['Bookings'],
         summary: 'Create draft booking',
         description:
-          'Rejects with 400 if this userId already has an unfinished booking (draft/submitted) or an active order (any status other than completed/cancelled) — a customer may only have one open request at a time.',
+          'A customer may hold **as many bookings as they like** — a booking is only a saved quote, so the ' +
+          'app can show a list of them. The limit is one *order* at a time, and it is enforced at payment ' +
+          '(`POST /api/payments/create-intent` returns 409 while an order is in progress), not here.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -584,7 +589,7 @@ const swaggerDefinition = {
         },
         responses: {
           201: { description: 'Booking created' },
-          400: { description: 'Validation error, or customer already has an unfinished booking/active order' },
+          400: { description: 'Validation error' },
         },
       },
     },
@@ -772,12 +777,18 @@ const swaggerDefinition = {
         description:
           'Admin-only ops tool for manually entered jobs (e.g. a booking taken over the phone). It was ' +
           'previously open to customers, which became a way to obtain an order without paying once the ' +
-          'booking flow required payment. Orders created here keep `paymentStatus: unpaid`.',
+          'booking flow required payment. Orders created here keep `paymentStatus: unpaid`.\n\n' +
+          'Respects the one-active-order rule (`409` if that customer already has a job in progress). Send ' +
+          '`allowConcurrentOrder: true` to override it for a genuine second job.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           content: { 'application/json': { schema: { type: 'object' } } },
         },
-        responses: { 201: { description: 'Order created' }, 403: { description: 'Not an admin' } },
+        responses: {
+          201: { description: 'Order created' },
+          403: { description: 'Not an admin' },
+          409: { description: 'Customer already has an order in progress' },
+        },
       },
     },
     '/api/orders/active': {
@@ -1379,7 +1390,11 @@ const swaggerDefinition = {
           'PaymentSheet on Flutter). Then either wait for the webhook or call ' +
           '`POST /api/payments/confirm` to get the order immediately.\n\n' +
           'Safe to call more than once: an in-flight PaymentIntent is reused (and re-priced if the ' +
-          'booking changed) instead of creating a second chargeable intent.',
+          'booking changed) instead of creating a second chargeable intent.\n\n' +
+          '**One order at a time.** A customer may hold any number of bookings, but this endpoint returns ' +
+          '`409` while they still have an order in progress (any status other than `completed`/`cancelled`), ' +
+          'naming the order that is blocking them. The check lives here rather than on the conversion that ' +
+          'follows, so nobody is ever charged for a job they cannot be given.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1403,7 +1418,10 @@ const swaggerDefinition = {
           400: { description: 'No items / terms not accepted / amount below £0.30' },
           403: { description: 'Booking belongs to another customer' },
           404: { description: 'Booking not found' },
-          409: { description: 'Booking already paid or already converted to an order' },
+          409: {
+            description:
+              'Booking already paid / already converted, or the customer still has an order in progress',
+          },
           503: { description: 'Stripe not configured' },
         },
       },

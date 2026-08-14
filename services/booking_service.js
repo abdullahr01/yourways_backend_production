@@ -11,12 +11,6 @@ const MapsService = require('./maps_service');
 const OrderService = require('./order_service');
 const logger = require('../utils/logger');
 
-// A booking with either of these statuses is "still in flight" — the
-// customer hasn't finished it yet (draft = still editing, submitted = mid
-// conversion into an order, e.g. the order-creation half of submitBooking
-// failed and is awaiting retry via POST /orders/create-from-booking).
-const UNFINISHED_BOOKING_STATUSES = ['draft', 'submitted'];
-
 /**
  * Fields a customer may never set on PUT /api/bookings/:id. The price and the
  * payment/lifecycle state are decided by the pricing engine, Stripe, and this
@@ -42,42 +36,6 @@ const PROTECTED_BOOKING_FIELDS = [
 ];
 
 class BookingService {
-  /**
-   * Business rule: a customer may only have ONE unfinished request in the
-   * system at a time — either an unfinished booking (draft/submitted) or an
-   * active order (pending → outForDropOff). This blocks both starting a new
-   * booking and submitting one while an existing request is still open.
-   * `excludeBookingId` lets submitBooking check for *other* unfinished
-   * bookings without tripping over the very booking it's about to submit.
-   */
-  async assertNoActiveRequest(userId, { excludeBookingId = null } = {}) {
-    const unfinished = await Booking.findMany(
-      { userId, statusIn: UNFINISHED_BOOKING_STATUSES },
-      5
-    );
-    const otherUnfinished = unfinished.find((b) => b.id !== excludeBookingId);
-    if (otherUnfinished) {
-      logger.warn(
-        `[BOOKING SVC] Blocked — user ${userId} already has unfinished booking ${otherUnfinished.id} (${otherUnfinished.status})`
-      );
-      throw new Error(
-        `You already have an unfinished booking (status: ${otherUnfinished.status}). ` +
-          `Please complete or delete it before starting a new request.`
-      );
-    }
-
-    const activeOrder = await OrderService.getActiveOrderForUser(userId);
-    if (activeOrder) {
-      logger.warn(
-        `[BOOKING SVC] Blocked — user ${userId} already has active order ${activeOrder.orderId} (${activeOrder.status})`
-      );
-      throw new Error(
-        `You already have an active order (${activeOrder.orderId}, status: ${activeOrder.status}). ` +
-          `Please wait until it is completed or cancelled before starting a new request.`
-      );
-    }
-  }
-
   async createBooking(bookingData) {
     try {
       logger.info('[BOOKING SVC] Creating draft booking...');
@@ -103,9 +61,10 @@ class BookingService {
         throw new Error('acceptTerms must be true');
       }
 
-      // One-active-request rule: fail fast, before any geocoding calls, if
-      // this customer already has an unfinished booking or a live order.
-      await this.assertNoActiveRequest(bookingData.userId);
+      // A customer may keep as many bookings as they like — a booking is just a
+      // saved quote, and building up a list of them is the point. The
+      // one-order-at-a-time rule bites later, at payment
+      // (order_service.js#assertNoActiveOrder).
 
       // Prefer coordinates the client already has (Places Autocomplete pick,
       // a dropped map pin, or "use my current location") — these are far more
@@ -373,11 +332,10 @@ class BookingService {
       }
       logger.info(`[BOOKING SVC] Payment verified: ${payment.paymentIntentId} £${payment.amount}`);
 
-      // Defense-in-depth: createBooking already prevents a second unfinished
-      // booking from ever existing, but re-check here in case an active
-      // order appeared through another path (e.g. POST /orders/create)
-      // between this booking's creation and now.
-      await this.assertNoActiveRequest(booking.userId, { excludeBookingId: booking.id });
+      // No one-active-order check here on purpose: the payment gate above means
+      // the money is already captured by the time we get this far, so refusing
+      // would leave the customer charged with no job. That rule is enforced
+      // before payment instead — see order_service.js#assertNoActiveOrder.
 
       // The amount Stripe actually captured is the locked price — so the
       // order total can never drift from what the customer was charged.
