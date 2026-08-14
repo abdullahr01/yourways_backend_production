@@ -14,7 +14,9 @@ logger.info('[ROUTES] Order routes loaded (Supabase)');
 // app can retry just this step. It's safe to retry — createOrderFromBooking
 // throws if the booking was already converted, so it can never double-create.
 router.post('/create-from-booking', requireAuth('user'), OrderController.createFromBooking);
-router.post('/create', requireAuth('user'), OrderController.create);
+// Admin-only: a customer-reachable "create an order out of thin air" endpoint
+// would bypass the pay-before-order rule enforced on the booking flow.
+router.post('/create', requireAuth('admin'), OrderController.create);
 
 router.get('/active', optionalAuth, OrderController.getActive);
 // requireSelf: same reasoning as bookings — a customer can only list THEIR

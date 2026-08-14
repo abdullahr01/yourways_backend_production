@@ -1,6 +1,8 @@
 const Order = require('../models/order_model');
 const Booking = require('../models/booking_model');
 const Driver = require('../models/driver_model');
+// Model, not payment_service — payment_service already requires this file.
+const Payment = require('../models/payment_model');
 const MapsService = require('./maps_service');
 const RealtimeService = require('./realtime_service');
 const logger = require('../utils/logger');
@@ -39,6 +41,19 @@ class OrderService {
       }
       if (booking.convertedOrderId) {
         throw new Error('Booking already converted to order');
+      }
+
+      // Same payment gate as submitBooking — this endpoint is a retry path for
+      // a booking whose payment already succeeded, so an unpaid booking
+      // reaching here means someone is trying to skip checkout.
+      const payment = await Payment.findSucceededByBookingId(bookingId);
+      if (!payment) {
+        logger.warn(`[ORDER SVC] Blocked — booking ${bookingId} has no successful payment`);
+        const err = new Error(
+          'This booking has not been paid yet. Pay via POST /api/payments/create-intent first.'
+        );
+        err.statusCode = 402;
+        throw err;
       }
 
       // The driver must see a real, actionable address — never a bare
@@ -85,8 +100,13 @@ class OrderService {
           quantity: item.quantity,
           modifiers: item.modifiers || {},
         })),
-        totalPrice: additionalData.totalPrice ?? booking.calculatedPrice ?? 0,
+        // The captured amount wins over the quote: the order total must equal
+        // what the customer's card was actually charged.
+        totalPrice: additionalData.totalPrice ?? payment.amount ?? booking.calculatedPrice ?? 0,
         quotedPrice: additionalData.quotedPrice ?? booking.calculatedPrice,
+        paymentStatus: 'succeeded',
+        paidAmount: payment.amount,
+        paymentId: payment.id,
         status: 'pending',
         meta: booking.meta,
       };

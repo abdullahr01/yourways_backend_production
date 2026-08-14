@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const AdminController = require('../controllers/admin_controller');
+const PaymentController = require('../controllers/payment_controller');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const logger = require('../utils/logger');
 
@@ -42,6 +43,11 @@ router.patch('/orders/:id/status', AdminController.updateOrderStatus);
 router.patch('/orders/:id/pricing', AdminController.updateOrderPricing);
 router.post('/orders/:id/schedule-pickup', AdminController.schedulePickup);
 router.post('/orders/:id/cancel', AdminController.cancelOrder);
+
+// Payments — read-only ledger plus refunds. Refunding is the money-side
+// counterpart to cancelling an order, so it is admin-only by design.
+router.get('/payments', PaymentController.listPayments);
+router.post('/payments/:id/refund', PaymentController.refund);
 
 // Catalog — full admin control over what services/categories/items/prices
 // are listed on the platform (DB-backed, replaces editing data/service_templates.js).

@@ -95,6 +95,12 @@ const mapOrder = (row) => {
     driverId: row.driver_id,
     totalPrice: row.total_price != null ? Number(row.total_price) : 0,
     quotedPrice: row.quoted_price != null ? Number(row.quoted_price) : null,
+    // Set when the Stripe payment on the source booking succeeded
+    // (sql/007_payments.sql). `paidAmount` is what Stripe actually captured,
+    // which can differ from totalPrice if an admin re-priced the job after.
+    paymentStatus: row.payment_status || 'unpaid',
+    paidAmount: row.paid_amount != null ? Number(row.paid_amount) : 0,
+    paymentId: row.payment_id,
     cancellationReason: row.cancellation_reason,
     meta: row.meta || {},
     totalItems: items.reduce((s, i) => s + (i.quantity || 1), 0),
@@ -152,6 +158,9 @@ const toDbInsert = (data) =>
     driver_comment: data.driverComment || data.driver_comment || null,
     total_price: data.totalPrice ?? data.total_price ?? 0,
     quoted_price: data.quotedPrice ?? data.quoted_price ?? null,
+    payment_status: data.paymentStatus ?? data.payment_status ?? 'unpaid',
+    paid_amount: data.paidAmount ?? data.paid_amount ?? 0,
+    payment_id: data.paymentId ?? data.payment_id ?? null,
     cancellation_reason: data.cancellationReason || data.cancellation_reason || null,
     meta: data.meta || {},
   });
@@ -208,6 +217,9 @@ const toDbUpdate = (data) => {
     driver_comment: data.driverComment ?? data.driver_comment,
     total_price: data.totalPrice ?? data.total_price,
     quoted_price: data.quotedPrice ?? data.quoted_price,
+    payment_status: data.paymentStatus ?? data.payment_status,
+    paid_amount: data.paidAmount ?? data.paid_amount,
+    payment_id: data.paymentId ?? data.payment_id,
     cancellation_reason: data.cancellationReason ?? data.cancellation_reason,
     meta: data.meta,
   });

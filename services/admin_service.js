@@ -3,6 +3,7 @@ const User = require('../models/user_model');
 const Driver = require('../models/driver_model');
 const Booking = require('../models/booking_model');
 const Order = require('../models/order_model');
+const Payment = require('../models/payment_model');
 const OrderService = require('./order_service');
 const DriverService = require('./driver_service');
 const DRIVER_STATUS = require('../constants/driver_status');
@@ -76,7 +77,7 @@ class AdminService {
   async getDashboard() {
     try {
       logger.info('[ADMIN SVC] Building dashboard stats...');
-      const [users, drivers, bookings, orders, activeOrders, pendingOrders] = await Promise.all([
+      const [users, drivers, bookings, orders, activeOrders, pendingOrders, payments] = await Promise.all([
         User.findAll(),
         Driver.findAll(),
         Booking.findMany({}, 5000),
@@ -95,6 +96,7 @@ class AdminService {
           5000
         ),
         Order.findMany({ status: 'pending' }, 5000),
+        Payment.findMany({}, 5000),
       ]);
 
       const approvedDrivers = drivers.filter((d) => d.isApprovedByAdmin);
@@ -102,6 +104,14 @@ class AdminService {
       const revenue = orders
         .filter((o) => o.status === 'completed')
         .reduce((sum, o) => sum + (Number(o.totalPrice) || 0), 0);
+
+      // Cash actually taken through Stripe, which is a different number from
+      // completedRevenue: customers pay up front, before the job is completed.
+      const succeededPayments = payments.filter(
+        (p) => p.status === 'succeeded' || p.status === 'refunded'
+      );
+      const collected = succeededPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      const refunded = payments.reduce((sum, p) => sum + (p.refundedAmount || 0), 0);
 
       const stats = {
         totalUsers: users.length,
@@ -117,6 +127,14 @@ class AdminService {
         completedOrders: orders.filter((o) => o.status === 'completed').length,
         cancelledOrders: orders.filter((o) => o.status === 'cancelled').length,
         completedRevenue: Math.round(revenue * 100) / 100,
+        totalPayments: payments.length,
+        successfulPayments: succeededPayments.length,
+        failedPayments: payments.filter((p) => p.status === 'failed').length,
+        pendingPayments: payments.filter((p) => p.status === 'pending' || p.status === 'processing')
+          .length,
+        grossCollected: Math.round(collected * 100) / 100,
+        totalRefunded: Math.round(refunded * 100) / 100,
+        netCollected: Math.round((collected - refunded) * 100) / 100,
       };
 
       logger.success(`[ADMIN SVC] Dashboard ready: ${JSON.stringify(stats)}`);

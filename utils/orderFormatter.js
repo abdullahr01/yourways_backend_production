@@ -64,6 +64,8 @@ const formatOrder = (order) => {
     driver: formatDriver(order.driver),
     totalPrice: order.totalPrice,
     quotedPrice: order.quotedPrice,
+    paymentStatus: order.paymentStatus || 'unpaid',
+    paidAmount: order.paidAmount ?? 0,
     cancellationReason: order.cancellationReason,
     pickupPhotos: order.pickupPhotos || [],
     deliveryPhotos: order.deliveryPhotos || [],

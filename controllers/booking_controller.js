@@ -183,6 +183,10 @@ class BookingController {
    * (status: converted_to_order) and the newly created order (status:
    * pending) so the frontend can go straight to the order/tracking screen
    * using `data.order.orderId` — no separate "create order" call needed.
+   *
+   * Requires a succeeded Stripe payment on the booking, so in the normal flow
+   * PaymentService triggers this automatically once Stripe confirms the money.
+   * Calling it on an unpaid booking returns 402 Payment Required.
    * POST /api/bookings/:id/submit
    */
   async submit(req, res) {
@@ -198,7 +202,8 @@ class BookingController {
       });
     } catch (err) {
       logger.error(`❌ Booking submission failed: ${err.message}`);
-      return errorResponse(res, 400, 'Booking submission failed', err.message);
+      // 402 when the booking hasn't been paid yet (see BookingService.submitBooking).
+      return errorResponse(res, err.statusCode || 400, 'Booking submission failed', err.message);
     }
   }
 

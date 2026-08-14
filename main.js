@@ -13,12 +13,27 @@ if (!process.env.GOOGLE_MAPS_API_KEY) {
   logger.warn('[MAIN] GOOGLE_MAPS_API_KEY not set — pricing/tracking will use offline heuristic distance only');
 }
 
+if (!process.env.STRIPE_SECRET_KEY) {
+  logger.warn('[MAIN] STRIPE_SECRET_KEY not set — /api/payments/* will return 503 and no booking can be paid');
+} else if (!process.env.STRIPE_WEBHOOK_SECRET) {
+  // Without the signing secret we cannot tell a real Stripe event from a
+  // forged one, so the webhook refuses everything. Payments still work end to
+  // end via POST /api/payments/confirm, which asks Stripe directly.
+  logger.warn(
+    '[MAIN] STRIPE_WEBHOOK_SECRET not set — webhook disabled. For local dev run: ' +
+      'stripe listen --forward-to localhost:' + PORT + '/api/payments/webhook'
+  );
+}
+
 app.listen(PORT, () => {
   logger.success(`[MAIN] Server running on http://localhost:${PORT}`);
   logger.success(`[MAIN] API Docs (Swagger): http://localhost:${PORT}/docs`);
   logger.info('[MAIN] Auth: JWT Bearer tokens (role=user|driver|admin)');
   logger.info('[MAIN] DB: Supabase Postgres');
   logger.info('[MAIN] Maps: Google Distance Matrix + Geocoding API');
+  logger.info(
+    `[MAIN] Payments: Stripe ${process.env.STRIPE_SECRET_KEY ? 'enabled' : 'DISABLED (no key)'} — bookings must be paid before becoming orders`
+  );
   logger.info('[MAIN] Realtime: Supabase Broadcast (driver-<id>, order-<id> channels)');
   logger.info('[MAIN] Ready to accept requests');
 

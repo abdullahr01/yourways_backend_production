@@ -55,6 +55,10 @@ const mapBooking = (row) => {
     status: row.status,
     submittedAt: row.submitted_at,
     convertedOrderId: row.converted_order_id,
+    // Denormalized from the latest `payments` row so booking screens can show
+    // a Paid/Unpaid badge without a join (sql/007_payments.sql).
+    paymentStatus: row.payment_status || 'unpaid',
+    paidAt: row.paid_at,
     meta: row.meta || {},
     totalItems,
     createdAt: row.created_at,
@@ -141,6 +145,8 @@ const toDbUpdate = (data) =>
     status: data.status,
     submitted_at: data.submittedAt ?? data.submitted_at,
     converted_order_id: data.convertedOrderId ?? data.converted_order_id,
+    payment_status: data.paymentStatus ?? data.payment_status,
+    paid_at: data.paidAt ?? data.paid_at,
     meta: data.meta,
   });
 

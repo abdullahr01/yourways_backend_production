@@ -8,10 +8,16 @@ const swaggerDefinition = {
     title: 'YourWays Logistics API',
     version: '1.1.0',
     description:
-      'Backend for cargo booking, quotations, orders, and driver workflow.\n\n' +
+      'Backend for cargo booking, quotations, payments, orders, and driver workflow.\n\n' +
       '**Auth:** Click Authorize and paste your JWT (Swagger adds Bearer).\n\n' +
       'Roles: `user` | `driver` | `admin`\n\n' +
-      'Admin panel APIs live under `/api/admin/*`',
+      'Admin panel APIs live under `/api/admin/*`\n\n' +
+      '**Payment flow (a booking must be paid before it becomes an order):**\n' +
+      '1. `POST /api/bookings/create` — draft booking\n' +
+      '2. `POST /api/bookings/{id}/calculate-price` — show the quote\n' +
+      '3. `POST /api/payments/create-intent` — server prices it and returns a Stripe `clientSecret`\n' +
+      '4. Client confirms the card with the Stripe SDK (card details never touch this API)\n' +
+      '5. Stripe webhook (or `POST /api/payments/confirm`) marks it paid and **creates the order**',
   },
   servers: [
     {
@@ -646,9 +652,16 @@ const swaggerDefinition = {
     '/api/bookings/{id}/submit': {
       post: {
         tags: ['Bookings'],
-        summary: 'Submit booking (also creates the order)',
+        summary: 'Submit booking (also creates the order) — requires payment first',
         description:
-          'Locks the booking price (status: draft → submitted) AND immediately converts it into an order (status: pending) in the same request. Response contains both `booking` (now converted_to_order) and `order` (the new job, with its `orderId`) — no separate "create order" call is needed.',
+          '**Requires a succeeded Stripe payment on the booking, otherwise 402.** In the normal flow the ' +
+          'frontend does not call this at all: paying via `POST /api/payments/create-intent` triggers it ' +
+          'automatically once Stripe confirms the money, and the order comes back from the webhook or ' +
+          'from `POST /api/payments/confirm`.\n\n' +
+          'Locks the booking price (status: draft → submitted) AND converts it into an order (status: ' +
+          'pending) in the same request. Response contains both `booking` (now converted_to_order) and ' +
+          '`order` (the new job, with its `orderId`). The locked price is the amount Stripe actually ' +
+          'captured, so the order total can never drift from what the customer was charged.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
@@ -675,6 +688,10 @@ const swaggerDefinition = {
               },
             },
           },
+          402: {
+            description:
+              'Booking not paid yet — create a payment with POST /api/payments/create-intent first',
+          },
         },
       },
     },
@@ -683,9 +700,12 @@ const swaggerDefinition = {
     '/api/orders/create-from-booking': {
       post: {
         tags: ['Orders'],
-        summary: '[Retry/fallback only] Convert submitted booking → order',
+        summary: '[Retry/fallback only] Convert paid+submitted booking → order',
         description:
-          'Not part of the normal flow — POST /api/bookings/{id}/submit now creates the order automatically. Use this only to recover a booking stuck at status "submitted" whose order-creation step failed on the first attempt. Safe to retry: throws if the booking was already converted.',
+          'Not part of the normal flow. Use this only to recover a booking stuck at status "submitted" ' +
+          '(payment succeeded, order creation failed). Safe to retry: throws if the booking was already ' +
+          'converted, and returns 402 if the booking was never paid.\n\n' +
+          '`totalPrice`/`quotedPrice` are no longer accepted — the order total is the amount Stripe captured.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -697,25 +717,30 @@ const swaggerDefinition = {
                 properties: {
                   bookingId: { type: 'string', format: 'uuid' },
                   serviceName: { type: 'string', example: 'Home Move' },
-                  totalPrice: { type: 'number' },
-                  quotedPrice: { type: 'number' },
                 },
               },
             },
           },
         },
-        responses: { 201: { description: 'Order created' } },
+        responses: {
+          201: { description: 'Order created' },
+          402: { description: 'Booking has no successful payment' },
+        },
       },
     },
     '/api/orders/create': {
       post: {
         tags: ['Orders'],
-        summary: 'Create order directly',
+        summary: 'Create order directly (admin only)',
+        description:
+          'Admin-only ops tool for manually entered jobs (e.g. a booking taken over the phone). It was ' +
+          'previously open to customers, which became a way to obtain an order without paying once the ' +
+          'booking flow required payment. Orders created here keep `paymentStatus: unpaid`.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           content: { 'application/json': { schema: { type: 'object' } } },
         },
-        responses: { 201: { description: 'Order created' } },
+        responses: { 201: { description: 'Order created' }, 403: { description: 'Not an admin' } },
       },
     },
     '/api/orders/active': {
@@ -1282,6 +1307,195 @@ const swaggerDefinition = {
           { name: 'destination', in: 'query', required: true, schema: { type: 'string', example: 'E1 6AN' } },
         ],
         responses: { 200: { description: 'Distance + duration' } },
+      },
+    },
+
+    // ——— Payments (Stripe) ———
+    '/api/payments/config': {
+      get: {
+        tags: ['Payments'],
+        summary: 'Stripe publishable key + currency',
+        description:
+          'Auth: none. Lets the web/Flutter app initialize the Stripe SDK without hardcoding a key. ' +
+          'The secret key never leaves the server.',
+        responses: {
+          200: { description: '{ publishableKey, currency, integration }' },
+          503: { description: 'Stripe not configured on the server' },
+        },
+      },
+    },
+    '/api/payments/create-intent': {
+      post: {
+        tags: ['Payments'],
+        summary: 'Start payment for a draft booking (step 1 of checkout)',
+        description:
+          '**This is where the money flow begins — a booking cannot become an order until it is paid.**\n\n' +
+          'The server re-runs the pricing engine on the booking and uses that as the amount; ' +
+          '`amount` is never read from the request body, so a client cannot choose its own price. ' +
+          'Display the returned `amount` before opening the payment sheet — it is what will be charged, ' +
+          'and it can differ from an earlier quote if items changed.\n\n' +
+          'Confirm the returned `clientSecret` with Stripe on the client (Payment Element on web, ' +
+          'PaymentSheet on Flutter). Then either wait for the webhook or call ' +
+          '`POST /api/payments/confirm` to get the order immediately.\n\n' +
+          'Safe to call more than once: an in-flight PaymentIntent is reused (and re-priced if the ' +
+          'booking changed) instead of creating a second chargeable intent.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['bookingId'],
+                properties: {
+                  bookingId: { type: 'string', format: 'uuid' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description:
+              '{ paymentId, paymentIntentId, clientSecret, publishableKey, amount, amountMinor, currency, status, priceBreakdown }',
+          },
+          400: { description: 'No items / terms not accepted / amount below £0.30' },
+          403: { description: 'Booking belongs to another customer' },
+          404: { description: 'Booking not found' },
+          409: { description: 'Booking already paid or already converted to an order' },
+          503: { description: 'Stripe not configured' },
+        },
+      },
+    },
+    '/api/payments/confirm': {
+      post: {
+        tags: ['Payments'],
+        summary: 'Re-read the payment from Stripe and finish the flow (step 2)',
+        description:
+          'Call this right after the payment sheet reports success to get the order without waiting for ' +
+          'the webhook. It is also the way to complete a payment in local development, where Stripe ' +
+          'cannot reach `localhost` without the Stripe CLI.\n\n' +
+          'Not a trust hole: the client only names the PaymentIntent — the outcome is fetched from ' +
+          "Stripe's API. A client claiming success for an unpaid intent gets `paymentStatus: pending`.\n\n" +
+          'Idempotent: calling it repeatedly (or alongside the webhook) creates exactly one order.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['paymentIntentId'],
+                properties: {
+                  paymentIntentId: { type: 'string', example: 'pi_3abc123...' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description:
+              '{ payment, order, paymentStatus }. `order` is the newly created order when the payment succeeded, otherwise null.',
+          },
+          400: { description: 'paymentIntentId missing' },
+          403: { description: 'Payment belongs to another customer' },
+          404: { description: 'Payment not found' },
+        },
+      },
+    },
+    '/api/payments/booking/{bookingId}': {
+      get: {
+        tags: ['Payments'],
+        summary: 'Payment state for a booking (poll)',
+        description:
+          'Lightweight polling alternative to `/confirm` — no Stripe API call, reads what the webhook ' +
+          'has already recorded. Returns the order once it exists.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'bookingId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          200: {
+            description:
+              '{ bookingId, bookingStatus, paymentStatus, isPaid, amount, currency, paidAt, receiptUrl, failureMessage, paymentIntentId, order }',
+          },
+          403: { description: 'Booking belongs to another customer' },
+          404: { description: 'Booking not found' },
+        },
+      },
+    },
+    '/api/payments/webhook': {
+      post: {
+        tags: ['Payments'],
+        summary: 'Stripe webhook (Stripe calls this, not your app)',
+        description:
+          'Auth: none — authenticity comes from the `Stripe-Signature` header, verified against the raw ' +
+          'request body using `STRIPE_WEBHOOK_SECRET`. Returns 503 while that secret is unset, because an ' +
+          'unverified endpoint would let anyone mark any booking as paid.\n\n' +
+          'Handled events: `payment_intent.succeeded` (marks paid, submits the booking, creates the order), ' +
+          '`payment_intent.payment_failed`, `payment_intent.canceled`, `charge.refunded`.\n\n' +
+          'Local dev: `stripe listen --forward-to localhost:5000/api/payments/webhook`.',
+        responses: {
+          200: { description: '{ received: true }' },
+          400: { description: 'Signature verification failed' },
+          500: { description: 'Handler error — Stripe will retry' },
+          503: { description: 'Stripe or webhook secret not configured' },
+        },
+      },
+    },
+    '/api/admin/payments': {
+      get: {
+        tags: ['Admin'],
+        summary: 'List payments (ledger)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'status',
+            in: 'query',
+            schema: {
+              type: 'string',
+              enum: ['pending', 'processing', 'succeeded', 'failed', 'cancelled', 'refunded'],
+            },
+          },
+          { name: 'userId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+          { name: 'bookingId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+          { name: 'orderId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', example: 100 } },
+        ],
+        responses: { 200: { description: '{ count, netCollected, payments[] }' } },
+      },
+    },
+    '/api/admin/payments/{id}/refund': {
+      post: {
+        tags: ['Admin'],
+        summary: 'Refund a payment (full or partial)',
+        description:
+          'Omit `amount` for a full refund of whatever is still refundable. Pair this with ' +
+          '`POST /api/admin/orders/{id}/cancel` when calling off a job the customer already paid for.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' }, description: 'payments.id (not the Stripe intent id)' },
+        ],
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  amount: { type: 'number', example: 50, description: 'GBP. Defaults to the full refundable amount.' },
+                  reason: { type: 'string', example: 'Customer cancelled before pickup' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: '{ payment, refundId, refundedAmount }' },
+          400: { description: 'Not refundable / amount out of range' },
+          404: { description: 'Payment not found' },
+          409: { description: 'Already fully refunded' },
+        },
       },
     },
   },

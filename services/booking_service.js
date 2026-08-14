@@ -1,4 +1,8 @@
 const Booking = require('../models/booking_model');
+// The payment gate reads the model directly, not payment_service — that
+// service already requires THIS one (to submit a booking once Stripe
+// confirms the money), so importing it back would create a require cycle.
+const Payment = require('../models/payment_model');
 const PricingService = require('./pricing_service');
 const MapsService = require('./maps_service');
 // order_service.js only requires models (not this service), so requiring it
@@ -12,6 +16,30 @@ const logger = require('../utils/logger');
 // conversion into an order, e.g. the order-creation half of submitBooking
 // failed and is awaiting retry via POST /orders/create-from-booking).
 const UNFINISHED_BOOKING_STATUSES = ['draft', 'submitted'];
+
+/**
+ * Fields a customer may never set on PUT /api/bookings/:id. The price and the
+ * payment/lifecycle state are decided by the pricing engine, Stripe, and this
+ * service — accepting them from the request body would let a client author its
+ * own price or pretend a booking was already paid.
+ */
+const PROTECTED_BOOKING_FIELDS = [
+  'calculatedPrice',
+  'calculated_price',
+  'priceBreakdown',
+  'price_breakdown',
+  'status',
+  'paymentStatus',
+  'payment_status',
+  'paidAt',
+  'paid_at',
+  'submittedAt',
+  'submitted_at',
+  'convertedOrderId',
+  'converted_order_id',
+  'userId',
+  'user_id',
+];
 
 class BookingService {
   /**
@@ -175,6 +203,17 @@ class BookingService {
         throw new Error(`Cannot update ${existing.status} booking`);
       }
 
+      // These are server-owned. They reach the DB mapper straight from
+      // req.body, so without this a customer could PUT their own
+      // `calculatedPrice` (pay £1 for a £300 move) or flip `status`/
+      // `paymentStatus` to fake a paid booking.
+      for (const field of PROTECTED_BOOKING_FIELDS) {
+        if (updateData[field] !== undefined) {
+          logger.warn(`[BOOKING SVC] Ignoring client-supplied '${field}' on booking update`);
+          delete updateData[field];
+        }
+      }
+
       // If the client sent coordinates directly (map pin / autocomplete pick),
       // trust them as-is. Otherwise, re-geocode (best-effort) using the full
       // address only if the address line or postcode text actually changed.
@@ -299,14 +338,17 @@ class BookingService {
 
   /**
    * Submit a draft booking AND immediately convert it into an order in the
-   * same call. This replaces the old two-endpoint flow
-   * (`POST /bookings/:id/submit` then `POST /orders/create-from-booking`) —
-   * the frontend always called them back-to-back with no logic in between,
-   * so they're now merged into a single request from the client's point of
-   * view. Internally this is still two sequential writes (bookings row →
+   * same call. Internally this is two sequential writes (bookings row →
    * submitted/converted_to_order, orders row → pending), reusing
    * `OrderService.createOrderFromBooking` so the order-creation logic (field
    * mapping, coordinate reuse, order code generation) isn't duplicated.
+   *
+   * PAYMENT GATE: the booking must already have a succeeded Stripe payment.
+   * In practice that means this is driven by PaymentService once Stripe
+   * confirms the money (webhook or verified /confirm), not called directly by
+   * a client — a customer hitting POST /api/bookings/:id/submit before paying
+   * gets 402 Payment Required. The check lives here rather than in the route
+   * so no code path (route, retry endpoint, future admin tool) can skip it.
    */
   async submitBooking(bookingId) {
     try {
@@ -319,19 +361,32 @@ class BookingService {
         throw new Error('Cannot submit booking without items');
       }
 
+      const payment = await Payment.findSucceededByBookingId(bookingId);
+      if (!payment) {
+        logger.warn(`[BOOKING SVC] Blocked — booking ${bookingId} has no successful payment`);
+        const err = new Error(
+          'This booking has not been paid yet. Create a payment with POST /api/payments/create-intent, ' +
+            'complete it in the app, and the order is created automatically once Stripe confirms it.'
+        );
+        err.statusCode = 402;
+        throw err;
+      }
+      logger.info(`[BOOKING SVC] Payment verified: ${payment.paymentIntentId} £${payment.amount}`);
+
       // Defense-in-depth: createBooking already prevents a second unfinished
       // booking from ever existing, but re-check here in case an active
       // order appeared through another path (e.g. POST /orders/create)
       // between this booking's creation and now.
       await this.assertNoActiveRequest(booking.userId, { excludeBookingId: booking.id });
 
-      let calculatedPrice = booking.calculatedPrice;
+      // The amount Stripe actually captured is the locked price — so the
+      // order total can never drift from what the customer was charged.
+      const calculatedPrice = payment.amount;
       let priceBreakdown = booking.priceBreakdown;
 
-      if (!calculatedPrice) {
-        logger.info('[BOOKING SVC] No price yet — calculating before submit...');
+      if (!priceBreakdown) {
+        logger.info('[BOOKING SVC] No stored breakdown — recomputing for the record...');
         priceBreakdown = await PricingService.calculateQuotation(booking);
-        calculatedPrice = priceBreakdown.total;
       }
 
       await Booking.updateById(bookingId, {
@@ -364,6 +419,15 @@ class BookingService {
       const booking = await Booking.findById(bookingId);
       if (!booking) throw new Error('Booking not found');
       if (booking.status !== 'draft') throw new Error('Only draft bookings can be deleted');
+
+      // payments.booking_id is ON DELETE CASCADE, so deleting a paid booking
+      // would silently erase the record of a real charge.
+      const paid = await Payment.findSucceededByBookingId(bookingId);
+      if (paid) {
+        throw new Error(
+          `Cannot delete a paid booking (£${paid.amount} charged). Cancel the order and refund the payment instead.`
+        );
+      }
 
       await Booking.deleteById(bookingId);
       logger.success(`[BOOKING SVC] Deleted id=${bookingId}`);

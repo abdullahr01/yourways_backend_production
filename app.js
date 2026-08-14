@@ -13,6 +13,8 @@ const bookingRoutes = require('./routes/booking_router');
 const serviceRoutes = require('./routes/service_router');
 const adminRoutes = require('./routes/admin_router');
 const mapsRoutes = require('./routes/maps_router');
+const paymentRoutes = require('./routes/payment_router');
+const paymentWebhookRoutes = require('./routes/payment_webhook_router');
 
 const app = express();
 
@@ -37,6 +39,11 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+// Stripe webhook FIRST: its signature is computed over the raw request bytes,
+// which bodyParser.json() below would destroy. Everything after this line
+// gets normal JSON parsing.
+app.use('/api/payments', paymentWebhookRoutes);
+
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(morgan('combined'));
@@ -70,7 +77,9 @@ app.get('/', (req, res) => {
       services: '/api/services',
       admin: '/api/admin',
       maps: '/api/maps',
+      payments: '/api/payments',
     },
+    payments: 'Stripe — a booking must be paid before it becomes an order',
     realtime: 'Supabase Realtime broadcast channels: driver-<id> (location/status), order-<id> (update)',
   });
 });
@@ -91,6 +100,7 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/maps', mapsRoutes);
+app.use('/api/payments', paymentRoutes);
 
 logger.info('[APP] All routes registered');
 

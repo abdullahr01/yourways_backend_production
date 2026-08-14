@@ -14,28 +14,33 @@ class OrderController {
     try {
       logger.info('🚚 Order creation from booking request received (retry/fallback path)');
       
-      const { bookingId, serviceName, totalPrice, quotedPrice } = req.body;
+      // Price overrides are deliberately NOT accepted here: the order total is
+      // the amount Stripe captured on the booking, so a client-supplied
+      // totalPrice would put the books out of sync with the actual charge.
+      const { bookingId, serviceName } = req.body;
       
       if (!bookingId) {
         throw new Error('Booking ID is required');
       }
       
-      const order = await OrderService.createOrderFromBooking(bookingId, {
-        serviceName,
-        totalPrice,
-        quotedPrice
-      });
+      const order = await OrderService.createOrderFromBooking(bookingId, { serviceName });
       
       logger.success(`✅ Order created from booking: ${order.orderId}`);
       return successResponse(res, 201, 'Order created successfully', order);
     } catch (err) {
       logger.error(`❌ Order creation failed: ${err.message}`);
-      return errorResponse(res, 400, 'Order creation failed', err.message);
+      // 402 when the booking hasn't been paid (see OrderService.createOrderFromBooking).
+      return errorResponse(res, err.statusCode || 400, 'Order creation failed', err.message);
     }
   }
 
   /**
-   * Create order directly (without booking)
+   * Create order directly (without booking) — ADMIN ONLY.
+   *
+   * Was open to customers, which became a way to get an order without ever
+   * paying once bookings required payment. It survives as an ops tool for
+   * manually entered jobs (e.g. a booking taken over the phone), where payment
+   * is collected outside the app; such orders keep paymentStatus 'unpaid'.
    * POST /api/orders/create
    */
   async create(req, res) {
