@@ -165,7 +165,29 @@ class DriverController {
     }
   }
 
-  // ==================== Location Updates ====================
+  // ==================== Location ====================
+
+  /**
+   * GET /api/drivers/:id/location
+   * Admin live map + the driver app checking its own fixes are landing.
+   */
+  async getLocation(req, res) {
+    try {
+      const { id } = req.params;
+      logger.info(`[DRIVER CTRL] Get location: driver=${id}`);
+
+      const location = await DriverService.getDriverLocation(id);
+
+      logger.success(
+        `[SUCCESS] ✅ Driver location fetched: age=${location.ageSeconds}s stale=${location.isStale}`
+      );
+      successResponse(res, 200, 'Driver location fetched successfully', location);
+    } catch (err) {
+      logger.error(`[ERROR] ❌ Get driver location failed: ${err.message}`);
+      errorResponse(res, err.statusCode || 404, err.message || 'Driver not found', err);
+    }
+  }
+
   
   async updateLocation(req, res) {
     try {

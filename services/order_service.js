@@ -7,6 +7,7 @@ const MapsService = require('./maps_service');
 const RealtimeService = require('./realtime_service');
 const logger = require('../utils/logger');
 const { formatOrder, formatOrders, formatDriver } = require('../utils/orderFormatter');
+const { formatDriverLocation } = require('../utils/locationFormatter');
 
 const ACTIVE_STATUSES = [
   'pending',
@@ -247,6 +248,54 @@ class OrderService {
       };
     } catch (err) {
       logger.error(`[ORDER SVC] getTracking failed: ${err.message}`);
+      throw err;
+    }
+  }
+
+  /**
+   * Just the assigned driver's position for one order — the endpoint the
+   * customer tracking map should poll between Realtime pushes.
+   *
+   * Split out of getOrderTracking() because that one bills a Google Distance
+   * Matrix request for the ETA on every single call, which is fine to load a
+   * screen once but not to refresh a marker every few seconds. This reads one
+   * row and nothing else.
+   */
+  async getDriverLocationForOrder(orderId) {
+    try {
+      logger.info(`[ORDER SVC] getDriverLocation order=${orderId}`);
+      const order = await Order.findById(orderId);
+      if (!order) throw new Error('Order not found');
+
+      // No driver yet is a normal state for a pending order, not an error —
+      // the map just shows no marker.
+      if (!order.driverId) {
+        return {
+          orderId: order.orderId,
+          status: order.status,
+          driverAssigned: false,
+          location: null,
+          realtimeChannel: `order-${order._id}`,
+        };
+      }
+
+      const driver = await Driver.findById(order.driverId);
+
+      // driverId and the driver-<id> Realtime channel are stripped: both would
+      // let the customer app keep watching that driver after this order ends.
+      // The customer refreshes the marker by re-calling this endpoint; the
+      // order-<uuid> channel still tells them when the status changes.
+      const { driverId, realtimeChannel, ...location } = formatDriverLocation(driver);
+
+      return {
+        orderId: order.orderId,
+        status: order.status,
+        driverAssigned: true,
+        location,
+        realtimeChannel: `order-${order._id}`,
+      };
+    } catch (err) {
+      logger.error(`[ORDER SVC] getDriverLocation failed: ${err.message}`);
       throw err;
     }
   }

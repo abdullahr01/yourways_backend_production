@@ -3,6 +3,7 @@ const Order = require('../models/order_model');
 const RealtimeService = require('./realtime_service');
 const logger = require('../utils/logger');
 const { formatOrder, formatOrders } = require('../utils/orderFormatter');
+const { formatDriverLocation } = require('../utils/locationFormatter');
 const { isOrderProofKeyFor, keyFromPublicUrl, removeByKey } = require('../config/storage');
 const DRIVER_STATUS = require('../constants/driver_status');
 
@@ -259,6 +260,35 @@ class DriverService {
       return driver;
     } catch (err) {
       logger.error(`[DRIVER SVC] updateLocation failed: ${err.message}`);
+      throw err;
+    }
+  }
+
+  /**
+   * Last-known GPS position of one driver, for the admin live map and for the
+   * driver app to confirm its own fixes are landing.
+   *
+   * Customers do NOT use this: they are never given a driverId (formatDriver
+   * deliberately omits it), and letting them poll an arbitrary driver would
+   * mean tracking that driver outside of any order. They use
+   * GET /api/orders/:id/driver-location instead. The route pairs
+   * requireAuth(['driver','admin']) with requireSelf so a driver can only read
+   * their own row.
+   */
+  async getDriverLocation(driverId) {
+    try {
+      logger.info(`[DRIVER SVC] getLocation id=${driverId}`);
+
+      const driver = await Driver.findById(driverId);
+      if (!driver) {
+        const err = new Error('Driver not found');
+        err.statusCode = 404;
+        throw err;
+      }
+
+      return formatDriverLocation(driver);
+    } catch (err) {
+      logger.error(`[DRIVER SVC] getLocation failed: ${err.message}`);
       throw err;
     }
   }

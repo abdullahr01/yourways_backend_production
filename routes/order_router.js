@@ -24,6 +24,11 @@ router.get('/active', optionalAuth, OrderController.getActive);
 router.get('/user/:userId', requireAuth('user'), requireSelf('userId'), OrderController.getByUser);
 router.get('/code/:orderId', optionalAuth, OrderController.getByOrderId);
 router.get('/:id/tracking', optionalAuth, OrderController.getTracking);
+// Poll this one for the moving marker — /tracking spends a Google Distance
+// Matrix call on the ETA every time, so it's for loading the screen, not for
+// refreshing it. Same optionalAuth as /tracking since it returns a strict
+// subset of what /tracking already exposes.
+router.get('/:id/driver-location', optionalAuth, OrderController.getDriverLocation);
 router.get('/:id', optionalAuth, OrderController.getById);
 
 router.put('/:id', requireAuth(['user', 'driver']), OrderController.update);

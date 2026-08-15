@@ -342,6 +342,35 @@ const swaggerDefinition = {
         },
       },
     },
+    '/api/drivers/{id}/location': {
+      get: {
+        tags: ['Drivers'],
+        summary: "Get a driver's last-known GPS position",
+        description:
+          'Read side of POST /api/drivers/{id}/update-location. Admin token reads any ' +
+          'driver (live fleet map); a driver token can only read its own id. ' +
+          'Customers must use GET /api/orders/{id}/driver-location instead — they are ' +
+          'never given a driverId.\n\n' +
+          'The position is only as fresh as the last ping the driver app sent, so the ' +
+          'response includes `ageSeconds` and `isStale` (true past `staleAfterSeconds`, ' +
+          'currently 120). Show "updated X ago" rather than a marker that looks live ' +
+          'but is not. For continuous updates prefer the Supabase Realtime channel ' +
+          '`driver-<driverId>` (event `location`), which is pushed on every ping.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          200: {
+            description:
+              '{ driverId, isOnline, hasLocation, latitude, longitude, lastUpdated, ageSeconds, isStale, staleAfterSeconds, realtimeChannel }. ' +
+              'hasLocation is false with null coordinates when the driver has never sent a ping.',
+          },
+          403: { description: 'A driver tried to read another driver’s location' },
+          404: { description: 'Driver not found' },
+        },
+      },
+    },
     '/api/drivers/{id}/go-online': {
       post: {
         tags: ['Drivers'],
@@ -842,10 +871,38 @@ const swaggerDefinition = {
       get: {
         tags: ['Orders'],
         summary: 'Live tracking: status timeline + driver GPS + ETA',
+        description:
+          'Full tracking screen payload. Each call spends a Google Distance Matrix ' +
+          'request on the ETA, so call it to load the screen and then poll ' +
+          'GET /api/orders/{id}/driver-location to keep the marker moving.',
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
         ],
         responses: { 200: { description: 'Tracking info' }, 404: { description: 'Order not found' } },
+      },
+    },
+    '/api/orders/{id}/driver-location': {
+      get: {
+        tags: ['Orders'],
+        summary: "Assigned driver's live position for one order (poll-friendly)",
+        description:
+          'Position only, no ETA — this is what the customer tracking map should poll ' +
+          'to move the marker. GET /api/orders/{id}/tracking bills a Google Distance ' +
+          'Matrix request for its ETA on every call, so use that once to load the ' +
+          'screen and this one to refresh it.\n\n' +
+          'Returns `driverAssigned: false` with `location: null` while the order is ' +
+          'still unassigned — that is a normal state, not an error. Freshness fields ' +
+          '(`ageSeconds`, `isStale`) work as described on GET /api/drivers/{id}/location.',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          200: {
+            description:
+              '{ orderId, status, driverAssigned, location: { isOnline, hasLocation, latitude, longitude, lastUpdated, ageSeconds, isStale, staleAfterSeconds } | null, realtimeChannel }',
+          },
+          404: { description: 'Order not found' },
+        },
       },
     },
     '/api/orders/{id}/status': {

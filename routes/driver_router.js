@@ -25,6 +25,18 @@ router.get(
   DriverController.getStatus
 );
 
+// Last-known GPS position. Authenticated on purpose (unlike GET /:id): an open
+// endpoint here would let anyone follow a driver around all day. Admins read
+// any driver for the live map; a driver only their own (enforced in the
+// service). Customers use GET /api/orders/:id/driver-location instead.
+// requireSelf already lets admins through while pinning a driver to their own id.
+router.get(
+  '/:id/location',
+  requireAuth(['driver', 'admin']),
+  requireSelf('id'),
+  DriverController.getLocation
+);
+
 // GET /:id stays public/unauthenticated on purpose — it's the driver's
 // public-facing profile shown to customers during order tracking.
 router.get('/:id', DriverController.getById);

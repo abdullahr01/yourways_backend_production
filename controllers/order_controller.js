@@ -188,6 +188,25 @@ class OrderController {
   }
 
   /**
+   * GET /api/orders/:id/driver-location
+   * Cheap, poll-friendly companion to /tracking for the customer's live map:
+   * position only, no Google ETA lookup.
+   */
+  async getDriverLocation(req, res) {
+    try {
+      logger.info(`📍 Fetching driver location for order: ${req.params.id}`);
+
+      const result = await OrderService.getDriverLocationForOrder(req.params.id);
+
+      logger.success(`✅ Driver location retrieved for ${result.orderId}`);
+      return successResponse(res, 200, 'Driver location fetched successfully', result);
+    } catch (err) {
+      logger.error(`❌ Get driver location failed: ${err.message}`);
+      return errorResponse(res, 404, 'Order not found', err.message);
+    }
+  }
+
+  /**
    * Update order status
    * PATCH /api/orders/:id/status
    */

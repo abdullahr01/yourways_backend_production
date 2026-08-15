@@ -1583,6 +1583,7 @@ Response: { "user": {...}, "token": "<YourWays JWT>", "isNewAccount": true }
 | `/api/drivers/:id/go-online` | POST | Bearer `driver` | Mark available |
 | `/api/drivers/:id/go-offline` | POST | Bearer `driver` | Mark unavailable |
 | `/api/drivers/:id/update-location` | POST | Bearer `driver` | Broadcast GPS `{ latitude, longitude }` |
+| `/api/drivers/:id/location` | GET | Bearer `driver` (own id) \| `admin` (any) | 🔧 IMPLEMENTED — read side of update-location, for the admin fleet map. Returns coordinates plus `ageSeconds`/`isStale` freshness (Section 11.4) |
 | `/api/drivers/:id/orders` | GET | Bearer `driver` | All assigned orders |
 | `/api/drivers/:id/orders/active` | GET | Bearer `driver` | Active-only assigned orders |
 | `/api/drivers/:id/orders/:orderId/status` | PATCH | Bearer `driver` | Forward-only status transition |
@@ -1673,7 +1674,8 @@ Request:
 | `/api/orders/:id` | GET | Optional | Lookup by UUID |
 | `/api/orders/:id/status` | PATCH | Bearer `user`\|`driver` | Update status (guarded by state machine, Section 8) |
 | `/api/orders/:id/cancel` | POST | Bearer `user` | Cancel with reason |
-| `/api/orders/:id/tracking` 💡 INFERRED | GET | Optional | Live driver position + ETA + status timeline, purpose-built for the map screen (currently likely derived client-side by joining order + driver location separately) |
+| `/api/orders/:id/tracking` 💡 INFERRED | GET | Optional | Live driver position + ETA + status timeline, purpose-built for the map screen. Costs one Google Distance Matrix call per request (the ETA) — load the screen with it, don't poll it |
+| `/api/orders/:id/driver-location` | GET | Optional | 🔧 IMPLEMENTED — the poll-friendly half of `/tracking`: assigned driver's position + freshness, no ETA lookup. `driverAssigned: false` while unassigned. The customer's only route to a driver position (Section 11.4) |
 | `/api/orders/:id/rate` 💡 INFERRED | POST | Bearer `user` | Post-completion rating/review of the driver |
 
 ⚠️ **GAP:** `GET /api/orders/:id` and `/code/:orderId` being **"Optional" auth** means any caller who knows/guesses an order ID or code can view full order details (customer PII, addresses). This should be tightened to Bearer-required with an ownership check (Section 17.3) — public-optional auth is appropriate for *tracking display embedded in shareable delivery-status links* only if the ID is an unguessable, single-purpose tracking token, not the primary order identifier.
@@ -2359,12 +2361,12 @@ Each backend service below follows: **Purpose → Responsibilities → Dependenc
 | Aspect | Detail |
 |---|---|
 | **Purpose** | Ingest driver location updates and expose current/historical position for tracking UI. |
-| **Responsibilities** | Accept `POST update-location`, persist current position, (💡 inferred) append to `tracking_logs` history, publish to Realtime channel. |
+| **Responsibilities** | Accept `POST update-location`, persist current position, (💡 inferred) append to `tracking_logs` history, publish to Realtime channel, and serve the current position on read (`GET /api/drivers/:id/location`, `GET /api/orders/:id/driver-location`). |
 | **Dependencies** | Realtime Service (11.10), Driver Service. |
 | **DB Usage** | `drivers.current_latitude/longitude` (current); 💡 `tracking_logs` (history, not yet implemented). |
 | **External APIs** | None directly; consumed by client-side Google Maps rendering. |
-| **Business Rules** | Only the assigned driver of an *active* order should have their location surfaced to that order's customer (authorization boundary — must not leak all drivers' locations to all customers). |
-| **Failure Handling** | Stale location (no update in N minutes during an active job) → 💡 inferred should flag "tracking temporarily unavailable" rather than showing a frozen/misleading pin. |
+| **Business Rules** | Only the assigned driver of an *active* order should have their location surfaced to that order's customer (authorization boundary — must not leak all drivers' locations to all customers). 🔧 **IMPLEMENTED**: customers read positions only through `GET /api/orders/:id/driver-location`, scoped to one order and stripped of the `driverId`, so an order can't become a handle for following that driver afterwards. The driver-keyed route is admin/driver-only. ⚠️ Remaining gap: that order route (like `/tracking`) uses `optionalAuth`, so anyone holding an order UUID can read it. |
+| **Failure Handling** | Stale location (no update in N minutes during an active job) → 💡 inferred should flag "tracking temporarily unavailable" rather than showing a frozen/misleading pin. 🔧 **IMPLEMENTED server-side**: both read endpoints return `lastUpdated`, `ageSeconds` and `isStale` (threshold 120s, `utils/locationFormatter.js`) so the client can render "updated X ago" instead of a frozen pin. The client-side fallback UI is still to be built. |
 | **Logging** | High-frequency writes — should use a lightweight/batched logging strategy to avoid log spam. |
 | **Security** | Rate-limit location update frequency to prevent abuse/DoS via excessive writes (💡 inferred). |
 | **Future Scalability** | Move to a geospatial index (PostGIS) if proximity queries (e.g., "nearest available driver") become a first-class feature (Section 11.9). |
