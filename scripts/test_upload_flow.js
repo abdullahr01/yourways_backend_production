@@ -16,6 +16,8 @@
  *   → the raw key is NOT publicly readable
  *   → complete-pickup/complete-delivery accept the keys and reject foreign ones
  *   → tracking + order history hand back short-lived signed URLs that work
+ *   → GET /api/images/orders/:id (and the list endpoints) return the same
+ *     pictures as { url, expiresAt }, and reject callers who don't own the order
  *
  * Side effects: two test drivers, one test customer, one booking, one order and
  * one test-mode Stripe payment. Nothing is charged for real.
@@ -393,6 +395,88 @@ const phone = (n) => `+4477${String(stamp).slice(-7)}${n}`;
     'admin sees signed photos too',
     adminPhotos.length > 0 && adminPhotos.every((u) => typeof u === 'string' && u.includes('token=')),
     JSON.stringify(adminPhotos)
+  );
+
+  // ——— 11. Dedicated GET /api/images/* ———
+  console.log('\n11) Dedicated GET image endpoints');
+  const driverPic = await call('GET', `/api/images/drivers/${driverA.id}`);
+  check('GET /api/images/drivers/:id returns the public photo', driverPic.status === 200, JSON.stringify(driverPic.body));
+  check(
+    'driver photo.url matches what was uploaded',
+    driverPic.body?.data?.photo?.url === photoUrl,
+    JSON.stringify(driverPic.body?.data)
+  );
+
+  const adminList = await call('GET', '/api/images/drivers', { token: adminToken });
+  check(
+    'admin can list every driver photo',
+    adminList.status === 200 && (adminList.body?.data?.drivers || []).some((d) => d.driverId === driverA.id),
+    JSON.stringify(adminList.body?.data)
+  );
+
+  const anonOrderImages = await call('GET', `/api/images/orders/${orderId}`);
+  check('order images require a token', anonOrderImages.status === 401, `got ${anonOrderImages.status}`);
+
+  const stranger = await call('GET', `/api/images/orders/${orderId}`, { token: driverB.token });
+  check(
+    'a driver who is not assigned cannot read the proofs',
+    stranger.status === 403,
+    `got ${stranger.status}`
+  );
+
+  const orderImages = await call('GET', `/api/images/orders/${orderId}`, { token: userToken });
+  const img = orderImages.body?.data || {};
+  check('the customer can read their order images', orderImages.status === 200, JSON.stringify(orderImages.body));
+  check(
+    'driverPhoto is the public URL',
+    img.driverPhoto?.url === photoUrl,
+    JSON.stringify(img.driverPhoto)
+  );
+  check(
+    'deliveryPhotos arrive as signed URLs',
+    (img.deliveryPhotos || []).length > 0 &&
+      img.deliveryPhotos.every((p) => typeof p?.url === 'string' && p.url.includes('token=')),
+    JSON.stringify(img.deliveryPhotos)
+  );
+  check(
+    'deliverySignature is signed too',
+    typeof img.deliverySignature?.url === 'string' && img.deliverySignature.url.includes('token='),
+    JSON.stringify(img.deliverySignature)
+  );
+  if (img.deliveryPhotos?.[0]?.url) {
+    check('a signed URL from GET /api/images actually loads', (await headStatus(img.deliveryPhotos[0].url)) === 200);
+  }
+
+  const pickupOnly = await call('GET', `/api/images/orders/${orderId}?kind=pickup`, { token: userToken });
+  check(
+    '?kind=pickup returns pickup photos and omits delivery',
+    pickupOnly.status === 200 &&
+      Array.isArray(pickupOnly.body?.data?.pickupPhotos) &&
+      pickupOnly.body.data.deliveryPhotos === undefined,
+    JSON.stringify(pickupOnly.body?.data)
+  );
+
+  const historyImages = await call('GET', `/api/images/users/${userId}/orders`, { token: userToken });
+  check(
+    'customer history endpoint includes this order',
+    historyImages.status === 200 &&
+      (historyImages.body?.data?.orders || []).some((o) => o.orderUuid === orderId),
+    JSON.stringify(historyImages.body?.data)
+  );
+
+  const otherUserHistory = await call('GET', `/api/images/users/${userId}/orders`, { token: driverA.token });
+  check(
+    'a driver token cannot list a customer\'s history photos',
+    otherUserHistory.status === 403,
+    `got ${otherUserHistory.status}`
+  );
+
+  const driverJobs = await call('GET', `/api/images/drivers/${driverA.id}/orders`, { token: driverA.token });
+  check(
+    'the assigned driver can list job photos',
+    driverJobs.status === 200 &&
+      (driverJobs.body?.data?.orders || []).some((o) => o.orderUuid === orderId),
+    JSON.stringify(driverJobs.body?.data)
   );
 
   finish();

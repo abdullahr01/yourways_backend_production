@@ -21,11 +21,12 @@ const swaggerDefinition = {
       '**One order at a time:** a customer can save up as many bookings as they want, but step 3 returns ' +
       '`409` while they already have an order in progress. Nothing after step 3 re-checks it, so no one is ' +
       'ever charged for a job we then refuse.\n\n' +
-      '**Images:** upload through `/api/uploads/*` — the apps never talk to Supabase Storage directly.\n' +
-      '- Driver photos go to a **public** bucket, so you store and render the returned `url` as-is.\n' +
-      '- Pickup/delivery proof goes to a **private** bucket, so you store the returned `storageKey`. ' +
-      'Whenever an order is read back, those keys come out as signed URLs valid for one hour — never ' +
-      'cache them, re-read the order instead.',
+      '**Images:** upload through `/api/uploads/*`, read through `/api/images/*` — the apps never talk to Supabase Storage directly.\n' +
+      '- Driver photos go to a **public** bucket. Upload returns a permanent `url`; read it back with ' +
+      '`GET /api/images/drivers/{id}` (or the admin list).\n' +
+      '- Pickup/delivery proof goes to a **private** bucket. Upload returns a `storageKey` to save on the order; ' +
+      'read the pictures with `GET /api/images/orders/{orderId}` (signed URLs, valid one hour — never cache them, ' +
+      'call the images endpoint again).',
   },
   servers: [
     {
@@ -1682,8 +1683,8 @@ const swaggerDefinition = {
           '`POST /api/drivers/{id}/orders/{orderId}/complete-pickup` or `.../complete-delivery`, which ' +
           'reject any reference that does not belong to that order. Use the returned `previewUrl` ' +
           '(short-lived) to show a thumbnail in the driver app straight away.\n\n' +
-          'When the order is read back later (tracking, order history, admin), the stored keys are ' +
-          'automatically returned as signed URLs valid for one hour.',
+          'When you want to display them, call `GET /api/images/orders/{orderId}` — that returns signed URLs ' +
+          'valid for one hour. Order/tracking payloads still include the signed fields too, for older clients.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -1731,6 +1732,118 @@ const swaggerDefinition = {
           403: { description: 'Order is not assigned to this driver' },
           404: { description: 'Order not found' },
           413: { description: 'File larger than 10 MB' },
+        },
+      },
+    },
+    '/api/images/drivers': {
+      get: {
+        tags: ['Images'],
+        summary: "List every driver's profile photo (admin)",
+        description:
+          'Auth: **admin**. Built for the driver-management screen so it does not have to pull photos ' +
+          'out of `GET /api/admin/drivers`. Each item is `{ driverId, name, hasPhoto, photo: { url, expiresAt } | null }`. ' +
+          '`expiresAt` is always null here — driver photos are public permanent URLs.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: { description: '{ count, drivers[] }' },
+          401: { description: 'No token' },
+          403: { description: 'Not an admin' },
+        },
+      },
+    },
+    '/api/images/drivers/{id}': {
+      get: {
+        tags: ['Images'],
+        summary: "One driver's profile photo",
+        description:
+          'Auth: none. Same public URL that already sits on `GET /api/drivers/{id}` as `profilePictureUrl`, ' +
+          'returned on its own so the UI does not have to load the whole driver record to show a face.\n\n' +
+          'Customers tracking an order do **not** receive a driverId — they should call ' +
+          '`GET /api/images/orders/{orderId}` which includes `driverPhoto`.',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          200: {
+            description:
+              '{ driverId, name, hasPhoto, photo: { url, expiresAt: null } | null }. hasPhoto is false when none was uploaded.',
+          },
+          404: { description: 'Driver not found' },
+        },
+      },
+    },
+    '/api/images/drivers/{id}/orders': {
+      get: {
+        tags: ['Images'],
+        summary: "Proof photos for every order assigned to a driver",
+        description:
+          'Auth: **driver** (own id) or **admin**. Driver-app job history.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          200: { description: '{ driverId, count, orders[] } — each order matches GET /api/images/orders/{orderId}' },
+          403: { description: 'A driver tried to read another driver\'s jobs' },
+          404: { description: 'Driver not found' },
+        },
+      },
+    },
+    '/api/images/orders/{orderId}': {
+      get: {
+        tags: ['Images'],
+        summary: 'Driver photo + proof-of-delivery for one order',
+        description:
+          'Auth: the **customer who owns the order**, the **assigned driver**, or an **admin**.\n\n' +
+          'This is the endpoint the order-detail / tracking / history screens should call for pictures. ' +
+          'Proof URLs are signed and expire after `expiresInSeconds` (3600). Re-call this endpoint rather ' +
+          'than caching the link.\n\n' +
+          'Pass `?kind=` to fetch only one group: `driverPhoto` | `pickup` | `delivery` | ' +
+          '`pickupSignature` | `deliverySignature`.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'orderId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+            description: 'Order UUID (`_id`), not the ORD-… code',
+          },
+          {
+            name: 'kind',
+            in: 'query',
+            required: false,
+            schema: {
+              type: 'string',
+              enum: ['driverPhoto', 'pickup', 'delivery', 'pickupSignature', 'deliverySignature'],
+            },
+          },
+        ],
+        responses: {
+          200: {
+            description:
+              '{ orderId, orderUuid, status, expiresInSeconds, driverPhoto, pickupPhotos[], deliveryPhotos[], pickupSignature, deliverySignature }. ' +
+              'Each image is `{ url, expiresAt }` or null / empty array when nothing was uploaded yet.',
+          },
+          401: { description: 'No token' },
+          403: { description: 'Not the owner, assigned driver, or admin' },
+          404: { description: 'Order not found' },
+        },
+      },
+    },
+    '/api/images/users/{userId}/orders': {
+      get: {
+        tags: ['Images'],
+        summary: "Proof photos for every order in a customer's history",
+        description:
+          'Auth: **user** (own id) or **admin**. Customer order-history screen.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          200: { description: '{ userId, count, orders[] } — each order matches GET /api/images/orders/{orderId}' },
+          403: { description: 'A customer tried to read another customer\'s photos' },
         },
       },
     },

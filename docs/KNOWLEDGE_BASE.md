@@ -1751,15 +1751,22 @@ Request: `{ "orderId": "uuid" }` → Response: `{ "clientSecret": "pi_..._secret
 | `/api/notifications/:id/read` | PATCH | Bearer `user`\|`driver` | Mark as read |
 | `/api/notifications/preferences` | GET/PUT | Bearer `user`\|`driver` | Opt-in/out of promotional vs. transactional notifications (compliance, Section 17) |
 
-### 9.10 Module: Uploads & Signatures 💡 INFERRED (SRS mandates photo/signature capture but never specifies the upload mechanism)
+### 9.10 Module: Uploads & Signatures 🔧 IMPLEMENTED (`/api/uploads/*` write, `/api/images/*` read)
 
 | Endpoint | Method | Auth | Purpose |
 |---|---|---|---|
-| `/api/uploads/presign` | POST | Bearer `driver` | Get a pre-signed upload URL for direct-to-storage upload (avoids proxying large binary through the API server) |
-| `/api/uploads/image` | POST (multipart) | Bearer `driver` | Fallback: direct server-side upload if presigned flow isn't used |
-| `/api/signatures` | POST | Bearer `driver` | Submit a signature (base64 PNG or presigned URL reference) tied to an order + stage (`pickup`/`dropoff`) |
+| `/api/uploads/limits` | GET | none | Size/type limits the pickers should enforce |
+| `/api/uploads/driver-photo` | POST (multipart) | Bearer `admin` | Upload a driver profile photo → permanent public `url` |
+| `/api/uploads/order-proof/:orderId` | POST (multipart) | Bearer `driver` (assigned) \| `admin` | Upload pickup/delivery/signature proof → private `storageKey` |
+| `/api/images/drivers/:id` | GET | none | One driver's profile photo |
+| `/api/images/drivers` | GET | Bearer `admin` | Every driver's profile photo (admin driver list) |
+| `/api/images/orders/:orderId` | GET | Bearer owner \| assigned driver \| `admin` | Driver photo + proof-of-delivery for one order |
+| `/api/images/users/:userId/orders` | GET | Bearer `user` (self) \| `admin` | Customer's order-history photos |
+| `/api/images/drivers/:id/orders` | GET | Bearer `driver` (self) \| `admin` | Driver's job-history photos |
 
-**Validation:** file type restricted to `image/jpeg`, `image/png`, `image/webp`; max size (💡 inferred 10MB); signature payload must decode to a valid image and not be blank/empty (a common real-world driver-app bug is capturing an empty signature pad).
+**Validation:** file type restricted to `image/jpeg`, `image/png`, `image/webp`; max size 10MB. Signature kinds accept exactly one file.
+
+**Reading:** the frontend should call `/api/images/*` rather than scraping `profilePictureUrl` / `pickupPhotos` out of driver/order payloads. Proof URLs are signed and expire after one hour — re-fetch instead of caching.
 
 ### 9.11 Module: Reports & Analytics (see also 9.7 admin reports)
 

@@ -16,6 +16,7 @@ const mapsRoutes = require('./routes/maps_router');
 const paymentRoutes = require('./routes/payment_router');
 const paymentWebhookRoutes = require('./routes/payment_webhook_router');
 const uploadRoutes = require('./routes/upload_router');
+const imageRoutes = require('./routes/image_router');
 const signStorageUrls = require('./middleware/signStorageUrls');
 
 const app = express();
@@ -86,6 +87,7 @@ app.get('/', (req, res) => {
       maps: '/api/maps',
       payments: '/api/payments',
       uploads: '/api/uploads',
+      images: '/api/images',
     },
     payments: 'Stripe — a booking must be paid before it becomes an order',
     storage:
@@ -112,6 +114,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/maps', mapsRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/uploads', uploadRoutes);
+app.use('/api/images', imageRoutes);
 
 logger.info('[APP] All routes registered');
 
