@@ -25,7 +25,7 @@ const allowedOrigins = [
     'http://localhost:53485',
     'http://localhost:5000',
     'http://localhost:3000',
-    'http://localhost:60422'
+    'http://localhost:49351'
 ];
 
 logger.info('[APP] Initializing YourWays Logistics API...');
