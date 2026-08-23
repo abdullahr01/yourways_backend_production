@@ -64,7 +64,33 @@ class UserController {
       });
     } catch (err) {
       logger.error(`[USER CTRL] Login failed: ${err.message}`);
-      return errorResponse(res, 400, 'User login failed', err);
+      const status = err.statusCode || 400;
+      return errorResponse(res, status, err.message || 'User login failed', err);
+    }
+  }
+
+  async checkPhone(req, res) {
+    try {
+      const { phone } = req.body;
+      logger.info('[USER CTRL] === CHECK PHONE ===');
+      logger.info(`[USER CTRL] phone=${phone} IP=${req.ip}`);
+
+      if (!phone) {
+        return errorResponse(res, 400, 'Phone number is required', new Error('Phone number missing'));
+      }
+
+      const { exists } = await UserService.checkPhone(phone);
+      if (!exists) {
+        return successResponse(res, 200, 'No account exists for this phone number. Please sign up first.', {
+          exists: false,
+        });
+      }
+
+      logger.success('[USER CTRL] Check phone — account found');
+      return successResponse(res, 200, 'Account found', { exists: true });
+    } catch (err) {
+      logger.error(`[USER CTRL] checkPhone failed: ${err.message}`);
+      return errorResponse(res, 400, 'Phone check failed', err);
     }
   }
 

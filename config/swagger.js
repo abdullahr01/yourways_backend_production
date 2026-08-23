@@ -249,6 +249,29 @@ const swaggerDefinition = {
         responses: {
           200: { description: 'Login OK — returns user + JWT' },
           400: { description: 'Failed' },
+          403: { description: 'Account inactive' },
+          404: { description: 'No account for this phone — sign up first' },
+        },
+      },
+    },
+    '/api/users/check-phone': {
+      post: {
+        tags: ['Users'],
+        summary: 'Check whether a phone number already has an account',
+        description:
+          'Used by the login screen *before* Firebase sends an SMS. Returns `{ exists }` and never issues a JWT. ' +
+          'Unknown numbers are `exists: false` (HTTP 200) so the client can tell the user to sign up first.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UserLogin' },
+            },
+          },
+        },
+        responses: {
+          200: { description: '`data.exists` is true or false' },
+          400: { description: 'Phone missing / lookup failed' },
         },
       },
     },

@@ -9,6 +9,7 @@ logger.info('[ROUTES] User routes loaded (Supabase + JWT)');
 // Public
 router.post('/register', UserController.register);
 router.post('/login', UserController.login);
+router.post('/check-phone', UserController.checkPhone);
 
 // Protected (Bearer JWT, role=user)
 router.post('/verify-token', requireAuth('user'), UserController.verifyToken);

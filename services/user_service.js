@@ -38,12 +38,16 @@ class UserService {
       const user = await User.findByPhone(phone);
       if (!user) {
         logger.warn(`[USER SVC] Login — user not found phone=${phone}`);
-        throw new Error('User not found. Please register first.');
+        const err = new Error('No account exists for this phone number. Please sign up first.');
+        err.statusCode = 404;
+        throw err;
       }
 
       if (user.status === 'inactive') {
         logger.warn(`[USER SVC] Login blocked — inactive user id=${user.id}`);
-        throw new Error('User account is inactive. Please contact support.');
+        const err = new Error('User account is inactive. Please contact support.');
+        err.statusCode = 403;
+        throw err;
       }
 
       const token = User.generateAuthToken(user);
@@ -53,6 +57,18 @@ class UserService {
       logger.error(`[USER SVC] Login failed: ${err.message}`);
       throw err;
     }
+  }
+
+  /**
+   * Public existence check used by login *before* Firebase sends an SMS.
+   * Does not issue a JWT — it only answers whether this phone is registered.
+   */
+  async checkPhone(phone) {
+    logger.info(`[USER SVC] Check phone=${phone}`);
+    const user = await User.findByPhone(phone);
+    const exists = !!user;
+    logger.info(`[USER SVC] Check phone exists=${exists}`);
+    return { exists };
   }
 
   async getAll() {
