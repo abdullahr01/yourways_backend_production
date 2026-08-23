@@ -6,6 +6,7 @@ const RevokedToken = require('./models/revoked_token_model');
 
 const PORT = process.env.PORT || 5000;
 
+//latest changes pushed 12:40
 logger.info('[MAIN] Starting YourWays Logistics server (Supabase)...');
 logger.info(`[MAIN] Port: ${PORT} | NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
 

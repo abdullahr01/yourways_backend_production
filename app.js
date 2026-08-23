@@ -28,6 +28,8 @@ const allowedOrigins = [
     'http://localhost:51753'
 ];
 
+//new latest push of 12:30
+
 logger.info('[APP] Initializing YourWays Logistics API...');
 
 app.use(cors({
