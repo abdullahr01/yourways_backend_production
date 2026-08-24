@@ -5,18 +5,28 @@ const MapsService = require('./maps_service');
 // Business constants (KB Section 11.3 "Future Scalability" flags these as the
 // values to eventually move into an admin-configurable `pricing_rules` table —
 // kept as named constants here so they are at least centralized/documented).
-const CALLOUT_FEE = 35; // flat call-out charge
 const PER_MILE_RATE = 2.5; // £ per mile (real distance now, via Google Distance Matrix)
 const VAT_RATE = 0.2; // UK VAT
 const COMPETITOR_DISCOUNT_RATE = 0.2; // "20% less than competitors" — applied to the standard total
+
+// Labour: UK general logistics / warehouse operative band (~£12.50–£15/hr).
+// Short local jobs (≤10 miles) sit on the National Living Wage floor.
+// Longer jobs pay more per hour, matching the 15-mile → £15/hr example,
+// capped at the typical HGV/specialist ceiling from the same research.
+const LABOUR_HOURLY_RATE_LOCAL = 12.5; // £/hour per person, jobs up to 10 miles
+const LABOUR_LOCAL_MILES = 10;
+const LABOUR_RATE_PER_EXTRA_MILE = 0.5; // 10 mi = £12.50, 15 mi = £15.00
+const LABOUR_HOURLY_RATE_CAP = 23; // typical UK HGV upper band
 
 /**
  * Quotation engine (YourWays doc Section 6.2 Step 3 / KB Section 11.3).
  *
  * Pricing depends on: real-world distance (Google Distance Matrix), item
- * weight/quantity/category, manpower tier, elevator/lift access at each end
- * (scaled by how many boxes/trips are involved), packing, dismantling,
- * insurance, parking access, and a flat volume discount for bigger jobs.
+ * weight/quantity/category, manpower (hourly rate × people × estimated hours,
+ * with the hourly rate rising after 10 miles), elevator/lift access at each
+ * end (scaled by how many boxes/trips are involved), packing, dismantling,
+ * insurance, and a flat volume discount for bigger jobs. No call-out fee
+ * and no parking charge.
  *
  * The final customer-facing price is the computed "standard" price minus a
  * flat 20% platform discount ("20% less than competitors"). Both numbers are
@@ -24,14 +34,42 @@ const COMPETITOR_DISCOUNT_RATE = 0.2; // "20% less than competitors" — applied
  * discounted final price ("You save £X").
  */
 class PricingService {
-  getManpowerCost(manpowerRequired) {
-    const map = {
-      '1 Man (Driver Assisted)': 45,
-      '2 Man Team': 90,
-      '3 Man Team': 135,
-      '4+ Man Team': 180,
-    };
-    return map[manpowerRequired] || 90;
+  /**
+   * How many people the customer asked for. Accepts both the website labels
+   * (`Driver Only`, `1 Man`, `2 Man Team`) and the older backend labels.
+   */
+  getLabourHeadcount(manpowerRequired) {
+    const label = String(manpowerRequired || '').toLowerCase();
+    if (label.includes('4+') || label.includes('4 man')) return 4;
+    if (label.includes('3')) return 3;
+    if (label.includes('2')) return 2;
+    if (label.includes('1') || label.includes('driver')) return 1;
+    return 2;
+  }
+
+  /**
+   * Hourly rate per person, based on trip length.
+   * 1–10 miles → £12.50 (UK general logistics / NLW band)
+   * 15 miles  → £15.00
+   * longer    → +£0.50 per extra mile, capped at £23
+   */
+  getLabourHourlyRate(distanceMiles) {
+    const miles = Math.max(0, Number(distanceMiles) || 0);
+    if (miles <= LABOUR_LOCAL_MILES) return LABOUR_HOURLY_RATE_LOCAL;
+    const rate = LABOUR_HOURLY_RATE_LOCAL + (miles - LABOUR_LOCAL_MILES) * LABOUR_RATE_PER_EXTRA_MILE;
+    return Math.round(Math.min(rate, LABOUR_HOURLY_RATE_CAP) * 100) / 100;
+  }
+
+  /**
+   * Labour for the job: people × hourly rate × estimated hours.
+   * Hours use the same estimate as the quote's delivery window so a 3-mile
+   * sofa move does not pay the old flat £90 "2 man team" lump.
+   */
+  getManpowerCost(manpowerRequired, distanceMiles, estimatedHours) {
+    const headcount = this.getLabourHeadcount(manpowerRequired);
+    const hourlyRate = this.getLabourHourlyRate(distanceMiles);
+    const hours = Math.max(1, Number(estimatedHours) || 1);
+    return Math.round(headcount * hourlyRate * hours * 100) / 100;
   }
 
   /**
@@ -43,25 +81,18 @@ class PricingService {
   getFloorCharge(floorLevel, hasLift, itemCount = 0) {
     if (hasLift || floorLevel === 'Ground Floor') return 0;
     const baseMap = {
-      '1st Floor': 15,
-      '2nd Floor': 30,
-      '3rd Floor+': 50,
-      Basement: 20,
+      '1st Floor': 5,
+      '2nd Floor': 20,
+      '3rd Floor+': 40,
+      Basement: 10,
     };
     const base = baseMap[floorLevel] || 0;
     const tripMultiplier = Math.max(1, Math.ceil(itemCount / 8));
     return Math.round(base * tripMultiplier * 100) / 100;
   }
 
-  getParkingCharge(parkingAccess) {
-    const map = {
-      'Easy Access (Driveway/Loading Bay)': 0,
-      'Street Parking': 10,
-      'Difficult Access (Permits/Long Carry)': 25,
-      'Restricted Access': 35,
-      'No Parking Nearby': 45,
-    };
-    return map[parkingAccess] || 0;
+  getParkingCharge() {
+    return 0;
   }
 
   getPackingCost(packingService) {
@@ -116,7 +147,7 @@ class PricingService {
           ? Number(providedWeight)
           : Number(fallbackWeight);
 
-      sum += qty * (5 + weight * 0.5) * pricingMultiplier;
+      sum += qty * (2 + weight * 0.3) * pricingMultiplier;
     }
     return sum;
   }
@@ -136,11 +167,19 @@ class PricingService {
     );
     logger.info(`[PRICING] Distance source=${source} miles=${distanceMiles} duration=${durationMinutes}min`);
 
-    const basePrice = CALLOUT_FEE + distanceMiles * PER_MILE_RATE;
-    const manpowerCost = this.getManpowerCost(bookingData.manpowerRequired);
-    const itemsCost = await this.calculateItemsCost(bookingData.items);
-
     const itemCount = (bookingData.items || []).reduce((s, i) => s + (i.quantity || 1), 0);
+    const estimatedDeliveryHours = Math.max(
+      2,
+      Math.ceil((durationMinutes || distanceMiles * 2.2) / 60) + Math.ceil(itemCount / 5)
+    );
+
+    const basePrice = distanceMiles * PER_MILE_RATE;
+    const manpowerCost = this.getManpowerCost(
+      bookingData.manpowerRequired,
+      distanceMiles,
+      estimatedDeliveryHours
+    );
+    const itemsCost = await this.calculateItemsCost(bookingData.items);
 
     const floorCharge =
       this.getFloorCharge(bookingData.collectionFloorLevel, bookingData.collectionLiftAccess, itemCount) +
@@ -149,7 +188,7 @@ class PricingService {
     const packingCost = this.getPackingCost(bookingData.packingService);
     const dismantlingCost = bookingData.dismantlingRequired ? 40 : 0;
     const insuranceCost = (bookingData.insuranceValue || 0) * 0.02;
-    const parkingCharge = this.getParkingCharge(bookingData.parkingAccess);
+    const parkingCharge = this.getParkingCharge();
 
     const volumeDiscount = itemCount >= 10 ? 25 : itemCount >= 5 ? 10 : 0;
 
@@ -170,11 +209,6 @@ class PricingService {
     // "20% less than competitors" — the actual chargeable/displayed price.
     const discountAmount = Math.round(standardTotal * COMPETITOR_DISCOUNT_RATE * 100) / 100;
     const total = Math.round((standardTotal - discountAmount) * 100) / 100;
-
-    const estimatedDeliveryHours = Math.max(
-      2,
-      Math.ceil((durationMinutes || distanceMiles * 2.2) / 60) + Math.ceil(itemCount / 5)
-    );
 
     const breakdown = {
       distanceMiles,
