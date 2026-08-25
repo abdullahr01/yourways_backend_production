@@ -19,6 +19,14 @@ const verifyToken = (token) => {
     return jwt.verify(token, JWT_SECRET);
   } catch (err) {
     logger.warn(`[AUTH] Token verify failed: ${err.message}`);
+    if (err.name === 'TokenExpiredError') {
+      throw new Error('Token expired. Please log in again.');
+    }
+    if (err.message === 'jwt malformed') {
+      throw new Error(
+        'Malformed token. Send Authorization: Bearer <token> using the JWT from login — not empty, not the ORD- code, and not the word Bearer twice.'
+      );
+    }
     throw new Error('Invalid or expired token');
   }
 };
@@ -86,7 +94,12 @@ const requireAuth = (roles = null) => async (req, res, next) => {
     req.user = decoded; // backward compatible
     next();
   } catch (err) {
-    return errorResponse(res, 401, 'Invalid or expired token', err);
+    const message =
+      err.message === 'Token expired. Please log in again.' ||
+      (typeof err.message === 'string' && err.message.startsWith('Malformed token'))
+        ? err.message
+        : 'Invalid or expired token';
+    return errorResponse(res, 401, message, err);
   }
 };
 

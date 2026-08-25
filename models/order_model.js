@@ -255,6 +255,21 @@ const findByOrderCode = async (orderCode) => {
   return mapOrder(row);
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Driver/customer apps often send the human `ORD-...` code (that's what
+ * formatOrder exposes as `id` / `orderId`) while some clients send the row
+ * UUID (`_id`). Both are valid identifiers for the same order.
+ */
+const findByUuidOrCode = async (idOrCode) => {
+  if (!idOrCode || typeof idOrCode !== 'string') return null;
+  const value = idOrCode.trim();
+  if (!value) return null;
+  if (UUID_RE.test(value)) return findById(value);
+  return findByOrderCode(value);
+};
+
 const findMany = async (filter = {}, limit = 100) => {
   logger.info(`[ORDER MODEL] SELECT many filter=${JSON.stringify(filter)} limit=${limit}`);
   let query = supabase
@@ -309,6 +324,7 @@ module.exports = {
   create,
   findById,
   findByOrderCode,
+  findByUuidOrCode,
   findMany,
   updateById,
   count,

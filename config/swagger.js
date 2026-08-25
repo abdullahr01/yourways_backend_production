@@ -1714,8 +1714,9 @@ const swaggerDefinition = {
             name: 'orderId',
             in: 'path',
             required: true,
-            schema: { type: 'string', format: 'uuid' },
-            description: 'The order UUID (`order.id`), same id used by the driver order endpoints',
+            schema: { type: 'string' },
+            description:
+              'Order UUID (`_id`) or the human `ORD-...` code (`order.id` / `orderId` from driver/customer payloads)',
           },
           {
             name: 'kind',
@@ -1738,7 +1739,7 @@ const swaggerDefinition = {
                   files: {
                     type: 'array',
                     items: { type: 'string', format: 'binary' },
-                    description: 'Up to 8 images per request, 10 MB each. `file` also works.',
+                    description: 'Up to 8 images per request, 10 MB each. Also accepts field names file, photos, photo, image, images.',
                   },
                 },
               },
@@ -1748,7 +1749,8 @@ const swaggerDefinition = {
         responses: {
           201: {
             description:
-              '{ orderId, kind, storageKeys[], files[{ storageKey, previewUrl }] } — submit `storageKeys`',
+            description:
+              '{ orderId, orderUuid, kind, storageKeys[], files[{ storageKey, previewUrl }] } — submit `storageKeys`',
           },
           400: { description: 'No file, unknown kind, or not a JPEG/PNG/WebP' },
           401: { description: 'No token' },
@@ -1829,8 +1831,8 @@ const swaggerDefinition = {
             name: 'orderId',
             in: 'path',
             required: true,
-            schema: { type: 'string', format: 'uuid' },
-            description: 'Order UUID (`_id`), not the ORD-… code',
+            schema: { type: 'string' },
+            description: 'Order UUID (`_id`) or the human `ORD-…` code',
           },
           {
             name: 'kind',

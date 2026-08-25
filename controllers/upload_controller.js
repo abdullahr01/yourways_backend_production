@@ -10,7 +10,14 @@ const logger = require('../utils/logger');
  */
 const collectFiles = (req) => {
   if (Array.isArray(req.files)) return req.files;
-  return [...(req.files?.files || []), ...(req.files?.file || [])];
+  return [
+    ...(req.files?.files || []),
+    ...(req.files?.file || []),
+    ...(req.files?.photos || []),
+    ...(req.files?.photo || []),
+    ...(req.files?.images || []),
+    ...(req.files?.image || []),
+  ];
 };
 
 class UploadController {
@@ -74,6 +81,7 @@ class UploadController {
       allowedMimeTypes: ALLOWED_MIME_TYPES,
       maxFilesPerRequest: 8,
       fieldName: 'files',
+      acceptedFieldNames: ['files', 'file', 'photos', 'photo', 'image', 'images'],
     });
   }
 }

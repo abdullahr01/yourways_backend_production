@@ -330,7 +330,7 @@ class DriverService {
       );
       logger.info(`[DRIVER SVC] additionalData keys=${Object.keys(additionalData || {}).join(',')}`);
 
-      const order = await Order.findById(orderId);
+      const order = await Order.findByUuidOrCode(orderId);
       if (!order) throw new Error('Order not found or not assigned to this driver');
       if (order.driverId !== driverId) {
         logger.warn(`[DRIVER SVC] Driver mismatch have=${order.driverId} want=${driverId}`);
@@ -347,7 +347,7 @@ class DriverService {
         await Driver.incrementCompletedOrders(driverId);
       }
 
-      const updated = await Order.updateById(orderId, updateData);
+      const updated = await Order.updateById(order._id, updateData);
       logger.success(`[DRIVER SVC] Order ${updated.orderId} → ${newStatus}`);
       await RealtimeService.broadcastOrderUpdate(updated);
       return formatOrder(updated);
@@ -363,7 +363,10 @@ class DriverService {
       if (!Array.isArray(photos) || photos.length === 0) {
         throw new Error('At least one pickup photo is required before completing pickup');
       }
-      const pickupPhotos = normalizeProofRefs(orderId, photos, 'pickup');
+      const order = await Order.findByUuidOrCode(orderId);
+      if (!order) throw new Error('Order not found or not assigned to this driver');
+      const orderUuid = order._id;
+      const pickupPhotos = normalizeProofRefs(orderUuid, photos, 'pickup');
       if (pickupPhotos.length === 0) {
         throw new Error('At least one pickup photo is required before completing pickup');
       }
@@ -375,10 +378,10 @@ class DriverService {
       if (additionalItems?.length) additionalData.additionalItems = additionalItems;
       if (comment) additionalData.driverComment = comment;
       if (signature) {
-        [additionalData.pickupSignature] = normalizeProofRefs(orderId, [signature], 'pickup signature');
+        [additionalData.pickupSignature] = normalizeProofRefs(orderUuid, [signature], 'pickup signature');
       }
 
-      return await this.updateOrderStatus(driverId, orderId, 'pickupCompleted', additionalData);
+      return await this.updateOrderStatus(driverId, orderUuid, 'pickupCompleted', additionalData);
     } catch (err) {
       logger.error(`[DRIVER SVC] completePickup failed: ${err.message}`);
       throw err;
@@ -408,11 +411,14 @@ class DriverService {
           'Customer must accept the delivery waiver / terms and conditions before completing the order'
         );
       }
-      const deliveryPhotos = normalizeProofRefs(orderId, photos, 'delivery');
+      const order = await Order.findByUuidOrCode(orderId);
+      if (!order) throw new Error('Order not found or not assigned to this driver');
+      const orderUuid = order._id;
+      const deliveryPhotos = normalizeProofRefs(orderUuid, photos, 'delivery');
       if (deliveryPhotos.length === 0) {
         throw new Error('At least one delivery photo is required before completing the order');
       }
-      const [deliverySignature] = normalizeProofRefs(orderId, [signature], 'delivery signature');
+      const [deliverySignature] = normalizeProofRefs(orderUuid, [signature], 'delivery signature');
 
       const additionalData = {
         deliveryCompletedAt: new Date().toISOString(),
@@ -422,13 +428,12 @@ class DriverService {
       };
 
       if (comment) {
-        const order = await Order.findById(orderId);
-        additionalData.driverComment = order?.driverComment
+        additionalData.driverComment = order.driverComment
           ? `${order.driverComment} | Delivery: ${comment}`
           : comment;
       }
 
-      return await this.updateOrderStatus(driverId, orderId, 'completed', additionalData);
+      return await this.updateOrderStatus(driverId, orderUuid, 'completed', additionalData);
     } catch (err) {
       logger.error(`[DRIVER SVC] completeDelivery failed: ${err.message}`);
       throw err;

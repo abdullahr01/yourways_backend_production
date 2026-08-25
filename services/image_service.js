@@ -133,14 +133,14 @@ class ImageService {
 
   async getOrderImages(orderId, { auth, kind = null } = {}) {
     logger.info(`[IMAGE SVC] getOrderImages order=${orderId} kind=${kind || 'all'}`);
-    if (!orderId || !UUID_RE.test(orderId)) {
+    if (!orderId || typeof orderId !== 'string' || !orderId.trim()) {
       throw httpError('Invalid order id');
     }
     if (kind && !IMAGE_KINDS.includes(kind)) {
       throw httpError(`Invalid kind "${kind}". Expected one of: ${IMAGE_KINDS.join(', ')}`);
     }
 
-    const order = await Order.findById(orderId);
+    const order = await Order.findByUuidOrCode(orderId.trim());
     if (!order) throw httpError('Order not found', 404);
     assertCanViewOrderImages(order, auth);
 

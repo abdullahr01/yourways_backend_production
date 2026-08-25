@@ -201,9 +201,16 @@ class OrderService {
         }
       }
 
+      const afterScheduled = ['pickupScheduled', 'outForPickup', 'pickupCompleted', 'outForDropOff', 'completed'];
       const timeline = [
         { status: 'pending', label: 'Booking Confirmed', at: order.createdAt, done: true },
         { status: 'confirmed', label: 'Driver Assigned', at: order.driverId ? order.updatedAt : null, done: Boolean(order.driverId) },
+        {
+          status: 'pickupScheduled',
+          label: 'Pickup Scheduled',
+          at: order.pickupDateTime,
+          done: afterScheduled.includes(order.status),
+        },
         {
           status: 'outForPickup',
           label: 'Out for Pickup',

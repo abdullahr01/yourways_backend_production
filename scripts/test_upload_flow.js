@@ -256,7 +256,8 @@ const phone = (n) => `+4477${String(stamp).slice(-7)}${n}`;
     return_url: 'https://yourways.test/return',
   });
   const confirm = await call('POST', '/api/payments/confirm', { token: userToken, body: { paymentIntentId } });
-  // `_id` is the UUID the order endpoints take; `id` is the human ORD-… code.
+  // `_id` is the UUID; `id` / `orderId` is the human ORD-… code.
+  // Upload/image/driver-order endpoints accept either.
   const orderId = confirm.body?.data?.order?._id;
   check('paid order created', Boolean(orderId), JSON.stringify(confirm.body?.data?.order));
   if (!orderId) return finish();

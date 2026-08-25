@@ -30,6 +30,10 @@ const upload = multer({
 const fileFields = upload.fields([
   { name: 'files', maxCount: MAX_FILES_PER_REQUEST },
   { name: 'file', maxCount: 1 },
+  { name: 'photos', maxCount: MAX_FILES_PER_REQUEST },
+  { name: 'photo', maxCount: MAX_FILES_PER_REQUEST },
+  { name: 'images', maxCount: MAX_FILES_PER_REQUEST },
+  { name: 'image', maxCount: 1 },
 ]);
 
 /**
@@ -58,7 +62,7 @@ const receiveFiles = (req, res, next) =>
         return errorResponse(
           res,
           400,
-          'Unexpected form field. Send the image(s) as "files" (or "file")'
+          'Unexpected form field. Send the image(s) as "files" (also accepts: file, photos, photo, image, images)'
         );
       }
     }

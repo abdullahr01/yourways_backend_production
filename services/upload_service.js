@@ -136,23 +136,29 @@ class UploadService {
         `Invalid kind "${kind}". Expected one of: ${Object.keys(PROOF_KINDS).join(', ')}`
       );
     }
-    if (!orderId || !UUID_RE.test(orderId)) {
+    if (!orderId || typeof orderId !== 'string' || !orderId.trim()) {
       throw badRequest('Invalid orderId');
     }
+
+    const order = await Order.findByUuidOrCode(orderId.trim());
+    if (!order) {
+      throw badRequest('Order not found', 404);
+    }
+    // Storage folders are always the row UUID, even if the client sent ORD-…
+    const orderUuid = order._id;
+
     if (!files?.length) {
-      throw badRequest('No image file received');
+      throw badRequest(
+        'No image file received. Send multipart/form-data with the image in the "files" field (also accepts: file, photos, photo, image, images)'
+      );
     }
     if (!spec.multiple && files.length > 1) {
       throw badRequest(`Only one file may be uploaded for kind "${kind}"`);
     }
 
-    const order = await Order.findById(orderId);
-    if (!order) {
-      throw badRequest('Order not found', 404);
-    }
     if (role !== 'admin' && order.driverId !== authId) {
       logger.warn(
-        `[UPLOAD SVC] Proof upload denied: order ${orderId} belongs to driver ${order.driverId}, caller is ${authId}`
+        `[UPLOAD SVC] Proof upload denied: order ${orderUuid} belongs to driver ${order.driverId}, caller is ${authId}`
       );
       throw badRequest('This order is not assigned to you', 403);
     }
@@ -161,7 +167,7 @@ class UploadService {
     for (const [index, file] of files.entries()) {
       const contentType = validateImage(file);
       const ext = extensionForMime(contentType);
-      const path = `${orderId}/${spec.folder}/${Date.now()}-${index}-${randomSuffix()}.${ext}`;
+      const path = `${orderUuid}/${spec.folder}/${Date.now()}-${index}-${randomSuffix()}.${ext}`;
 
       keys.push(
         await uploadBuffer({
@@ -178,6 +184,7 @@ class UploadService {
 
     return {
       orderId: order.orderId,
+      orderUuid,
       kind,
       // What the driver app must send back to complete-pickup/complete-delivery.
       storageKeys: keys,
