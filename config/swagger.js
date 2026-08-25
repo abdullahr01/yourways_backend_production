@@ -1749,7 +1749,6 @@ const swaggerDefinition = {
         responses: {
           201: {
             description:
-            description:
               '{ orderId, orderUuid, kind, storageKeys[], files[{ storageKey, previewUrl }] } — submit `storageKeys`',
           },
           400: { description: 'No file, unknown kind, or not a JPEG/PNG/WebP' },
