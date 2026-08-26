@@ -25,7 +25,8 @@ const allowedOrigins = [
     'http://localhost:53485',
     'http://localhost:5000',
     'http://localhost:3000',
-    'http://localhost:65389'
+    'http://localhost:65389',
+    'http://127.0.0.1:3000'
 ];
 
 //new latest push of 12:30
