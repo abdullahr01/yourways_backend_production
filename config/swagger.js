@@ -144,6 +144,7 @@ const swaggerDefinition = {
             type: 'string',
             enum: ['Exact Date Only', 'Within 3 Days', 'Within a Week', 'Flexible'],
             example: 'Exact Date Only',
+            description: 'Unused by the website — omit. DB default is Exact Date Only.',
           },
           fullName: { type: 'string', example: 'Ali Khan' },
           email: { type: 'string', example: 'ali@example.com' },
