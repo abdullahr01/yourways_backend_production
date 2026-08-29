@@ -133,6 +133,18 @@ const swaggerDefinition = {
           collectionPostcode: { type: 'string', example: 'SW1A 1AA' },
           deliveryAddress: { type: 'string', example: '10 Downing Street' },
           deliveryPostcode: { type: 'string', example: 'E1 6AN' },
+          moveDate: {
+            type: 'string',
+            format: 'date-time',
+            example: '2026-09-03T00:00:00.000Z',
+            description:
+              'Customer-picked move/delivery day from the booking calendar. Optional; stored as null if omitted. Copied to the order as pickupDateTime on submit/pay.',
+          },
+          dateFlexibility: {
+            type: 'string',
+            enum: ['Exact Date Only', 'Within 3 Days', 'Within a Week', 'Flexible'],
+            example: 'Exact Date Only',
+          },
           fullName: { type: 'string', example: 'Ali Khan' },
           email: { type: 'string', example: 'ali@example.com' },
           mobileNumber: { type: 'string', example: '+447700900123' },
