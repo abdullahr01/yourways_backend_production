@@ -452,7 +452,9 @@ class PaymentService {
 
   /**
    * Convert the now-paid booking into an order, tolerating every partial
-   * state a retried webhook can land in.
+   * state a retried webhook can land in. Concurrent /confirm + webhook both
+   * call this; the unique index on orders.booking_id plus the draft claim
+   * mean the loser returns the winner's order instead of inserting a second.
    */
   async _fulfillBooking(bookingId) {
     const booking = await Booking.findById(bookingId);
@@ -467,17 +469,27 @@ class PaymentService {
     }
 
     try {
-      if (booking.status === 'draft') {
+      if (booking.status === 'draft' || booking.status === 'submitted') {
         const { order } = await BookingService.submitBooking(bookingId);
         return Order.findById(order._id);
       }
 
-      // 'submitted' — a previous attempt locked the price but died before the
-      // order was written.
       const order = await OrderService.createOrderFromBooking(bookingId);
       return Order.findById(order._id);
     } catch (err) {
       logger.error(`[PAYMENT SVC] Fulfillment failed for booking ${bookingId}: ${err.message}`);
+      const again = await Booking.findById(bookingId);
+      if (again?.convertedOrderId) {
+        logger.warn(
+          `[PAYMENT SVC] Race recovered — using existing order ${again.convertedOrderId}`
+        );
+        return Order.findById(again.convertedOrderId);
+      }
+      const existing = await Order.findByBookingId(bookingId);
+      if (existing) {
+        logger.warn(`[PAYMENT SVC] Race recovered — found order ${existing.orderId}`);
+        return existing;
+      }
       return null;
     }
   }

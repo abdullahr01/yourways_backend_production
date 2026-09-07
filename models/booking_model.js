@@ -197,6 +197,36 @@ const deleteById = async (id) => {
   return true;
 };
 
+/**
+ * Atomic draft → submitted. Only one concurrent caller wins (the rest get
+ * null) so webhook + /confirm cannot both think they still own a draft.
+ */
+const claimDraftForConversion = async (id, extra = {}) => {
+  logger.info(`[BOOKING MODEL] CLAIM draft→submitted id=${id}`);
+  const result = await supabase
+    .from(TABLE)
+    .update(
+      toDbUpdate({
+        status: 'submitted',
+        submittedAt: extra.submittedAt || new Date().toISOString(),
+        calculatedPrice: extra.calculatedPrice,
+        priceBreakdown: extra.priceBreakdown,
+      })
+    )
+    .eq('id', id)
+    .eq('status', 'draft')
+    .is('converted_order_id', null)
+    .select()
+    .maybeSingle();
+  const row = handleSupabase('bookings.claimDraft', result, { allowNull: true });
+  if (!row) {
+    logger.info(`[BOOKING MODEL] Claim missed id=${id} (already claimed or converted)`);
+    return null;
+  }
+  logger.success(`[BOOKING MODEL] Claimed booking id=${id}`);
+  return mapBooking(row);
+};
+
 module.exports = {
   mapBooking,
   create,
@@ -204,4 +234,5 @@ module.exports = {
   findMany,
   updateById,
   deleteById,
+  claimDraftForConversion,
 };

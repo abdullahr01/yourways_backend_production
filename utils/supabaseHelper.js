@@ -1,5 +1,11 @@
 const logger = require('./logger');
 
+/** Postgres unique_violation — two inserts raced for the same key. */
+const isUniqueViolation = (error) =>
+  error?.code === '23505' ||
+  error?.name === 'UniqueViolationError' ||
+  /duplicate key value/i.test(error?.message || '');
+
 /**
  * Handle Supabase { data, error } responses with diagnostic logs.
  */
@@ -9,7 +15,10 @@ const handleSupabase = (label, { data, error }, { allowNull = false } = {}) => {
     logger.error(`[SUPABASE] code=${error.code || 'n/a'} | message=${error.message}`);
     if (error.details) logger.error(`[SUPABASE] details=${error.details}`);
     if (error.hint) logger.warn(`[SUPABASE] hint=${error.hint}`);
-    throw new Error(error.message || `${label} failed`);
+    const err = new Error(error.message || `${label} failed`);
+    err.code = error.code;
+    if (error.code === '23505') err.name = 'UniqueViolationError';
+    throw err;
   }
 
   if (!allowNull && (data === null || data === undefined)) {
@@ -33,4 +42,4 @@ const logPayload = (label, payload) => {
   }
 };
 
-module.exports = { handleSupabase, logPayload };
+module.exports = { handleSupabase, logPayload, isUniqueViolation };

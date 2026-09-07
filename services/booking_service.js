@@ -314,7 +314,6 @@ class BookingService {
       logger.info(`[BOOKING SVC] submit id=${bookingId}`);
       const booking = await Booking.findById(bookingId);
       if (!booking) throw new Error('Booking not found');
-      if (booking.status !== 'draft') throw new Error('Only draft bookings can be submitted');
       if (!booking.acceptTerms) throw new Error('Terms must be accepted before submission');
       if (!booking.items || booking.items.length === 0) {
         throw new Error('Cannot submit booking without items');
@@ -332,10 +331,21 @@ class BookingService {
       }
       logger.info(`[BOOKING SVC] Payment verified: ${payment.paymentIntentId} £${payment.amount}`);
 
-      // No one-active-order check here on purpose: the payment gate above means
-      // the money is already captured by the time we get this far, so refusing
-      // would leave the customer charged with no job. That rule is enforced
-      // before payment instead — see order_service.js#assertNoActiveOrder.
+      // Already converted (or the other racer finished) — return that order.
+      if (booking.status === 'converted_to_order' || booking.convertedOrderId) {
+        const order = await OrderService.createOrderFromBooking(bookingId);
+        return { booking, order };
+      }
+
+      if (booking.status === 'submitted') {
+        const order = await OrderService.createOrderFromBooking(bookingId);
+        const finalBooking = await Booking.findById(bookingId);
+        return { booking: finalBooking, order };
+      }
+
+      if (booking.status !== 'draft') {
+        throw new Error('Only draft bookings can be submitted');
+      }
 
       // The amount Stripe actually captured is the locked price — so the
       // order total can never drift from what the customer was charged.
@@ -347,12 +357,18 @@ class BookingService {
         priceBreakdown = await PricingService.calculateQuotation(booking);
       }
 
-      await Booking.updateById(bookingId, {
+      const claimed = await Booking.claimDraftForConversion(bookingId, {
         calculatedPrice,
         priceBreakdown,
-        status: 'submitted',
         submittedAt: new Date().toISOString(),
       });
+
+      if (!claimed) {
+        logger.info(`[BOOKING SVC] Booking ${bookingId} already claimed — returning existing order`);
+        const current = await Booking.findById(bookingId);
+        const order = await OrderService.createOrderFromBooking(bookingId);
+        return { booking: current, order };
+      }
 
       logger.success(`[BOOKING SVC] Submitted id=${bookingId} price=£${calculatedPrice}`);
 

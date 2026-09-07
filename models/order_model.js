@@ -270,6 +270,20 @@ const findByUuidOrCode = async (idOrCode) => {
   return findByOrderCode(value);
 };
 
+const findByBookingId = async (bookingId) => {
+  if (!bookingId) return null;
+  logger.info(`[ORDER MODEL] SELECT by booking_id=${bookingId}`);
+  const result = await supabase
+    .from(TABLE)
+    .select(SELECT_WITH_DRIVER)
+    .eq('booking_id', bookingId)
+    .order('created_at', { ascending: true })
+    .limit(1);
+  const rows = handleSupabase('orders.findByBookingId', result, { allowNull: true }) || [];
+  const row = Array.isArray(rows) ? rows[0] : rows;
+  return mapOrder(row || null);
+};
+
 const findMany = async (filter = {}, limit = 100) => {
   logger.info(`[ORDER MODEL] SELECT many filter=${JSON.stringify(filter)} limit=${limit}`);
   let query = supabase
@@ -325,6 +339,7 @@ module.exports = {
   findById,
   findByOrderCode,
   findByUuidOrCode,
+  findByBookingId,
   findMany,
   updateById,
   count,

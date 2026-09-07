@@ -8,6 +8,7 @@ const RealtimeService = require('./realtime_service');
 const logger = require('../utils/logger');
 const { formatOrder, formatOrders, formatDriver } = require('../utils/orderFormatter');
 const { formatDriverLocation } = require('../utils/locationFormatter');
+const { isUniqueViolation } = require('../utils/supabaseHelper');
 
 const ACTIVE_STATUSES = [
   'pending',
@@ -37,11 +38,16 @@ class OrderService {
 
       const booking = await Booking.findById(bookingId);
       if (!booking) throw new Error('Booking not found');
+
+      const already = await this._existingOrderForBooking(booking);
+      if (already) {
+        logger.info(`[ORDER SVC] Booking ${bookingId} already has order ${already.orderId}`);
+        await this._markBookingConverted(bookingId, already._id, booking);
+        return formatOrder(already);
+      }
+
       if (booking.status !== 'submitted') {
         throw new Error('Only submitted bookings can be converted to orders');
-      }
-      if (booking.convertedOrderId) {
-        throw new Error('Booking already converted to order');
       }
 
       // Same payment gate as submitBooking — this endpoint is a retry path for
@@ -119,7 +125,19 @@ class OrderService {
         meta: booking.meta,
       };
 
-      const order = await Order.create(orderData);
+      let order;
+      try {
+        order = await Order.create(orderData);
+      } catch (err) {
+        if (!isUniqueViolation(err)) throw err;
+        logger.warn(
+          `[ORDER SVC] Race on booking ${bookingId} — another process already created the order`
+        );
+        order = await Order.findByBookingId(bookingId);
+        if (!order) throw err;
+        await this._markBookingConverted(bookingId, order._id, booking);
+        return formatOrder(order);
+      }
 
       await Booking.updateById(bookingId, {
         status: 'converted_to_order',
@@ -134,6 +152,23 @@ class OrderService {
       logger.error(`[ORDER SVC] createFromBooking failed: ${err.message}`);
       throw err;
     }
+  }
+
+  async _markBookingConverted(bookingId, orderId, booking = null) {
+    if (booking?.convertedOrderId && booking.status === 'converted_to_order') return;
+    await Booking.updateById(bookingId, {
+      status: 'converted_to_order',
+      convertedOrderId: orderId,
+    });
+  }
+
+  async _existingOrderForBooking(booking) {
+    if (!booking) return null;
+    if (booking.convertedOrderId) {
+      const byPointer = await Order.findById(booking.convertedOrderId);
+      if (byPointer) return byPointer;
+    }
+    return Order.findByBookingId(booking.id);
   }
 
   async createOrder(orderData) {
