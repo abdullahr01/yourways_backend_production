@@ -27,7 +27,7 @@ const allowedOrigins = [
     'http://localhost:3000',
     'http://localhost:65389',
     'http://127.0.0.1:3000',
-    'http://localhost:60648',
+    'http://localhost:61462',
     'https://yourwaycouriers.co.uk',
     'https://adminpanel.yourwaycouriers.co.uk'
 ];
