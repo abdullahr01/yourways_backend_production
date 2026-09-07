@@ -20,8 +20,14 @@ const formatItem = (item) => ({
 
 const fullAddress = (formatted, line, postcode) => {
   if (formatted) return formatted;
-  if (!line) return null;
-  return postcode ? `${line}, ${postcode}` : line;
+  if (!line) return postcode || null;
+  if (!postcode) return line;
+  // Customers often type the postcode into the address line already
+  // ("Birmingham B37 7NZ, UK") — don't append it again.
+  const haystack = line.toUpperCase().replace(/\s+/g, '');
+  const needle = postcode.toUpperCase().replace(/\s+/g, '');
+  if (haystack.includes(needle)) return line;
+  return `${line}, ${postcode}`;
 };
 
 const formatBooking = (booking) => {
