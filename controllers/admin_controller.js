@@ -172,7 +172,13 @@ class AdminController {
     try {
       logger.info('[ADMIN CTRL] listBookings');
       const filter = {};
-      if (req.query.status) filter.status = req.query.status;
+      // Default: drafts (and the rare 'submitted' stuck mid-conversion).
+      // Converted bookings already live on the orders screen — don't mix them in.
+      if (req.query.status) {
+        filter.status = req.query.status;
+      } else {
+        filter.statusIn = ['draft', 'submitted'];
+      }
       if (req.query.userId) filter.userId = req.query.userId;
       const limit = parseInt(req.query.limit, 10) || 100;
       const bookings = await AdminService.listBookings(filter, limit);

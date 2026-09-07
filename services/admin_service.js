@@ -9,6 +9,7 @@ const DriverService = require('./driver_service');
 const DRIVER_STATUS = require('../constants/driver_status');
 const logger = require('../utils/logger');
 const { formatOrders } = require('../utils/orderFormatter');
+const { formatBooking, formatBookings } = require('../utils/bookingFormatter');
 
 class AdminService {
   /**
@@ -203,15 +204,19 @@ class AdminService {
   }
 
   // ——— Bookings ———
+  // Admin booking screen: quotes the customer started but has not paid /
+  // converted into an order yet. Formatted the same way as list-orders so
+  // the panel can reuse the same cards (and without meta/coordinates).
   async listBookings(filter = {}, limit = 100) {
     logger.info(`[ADMIN SVC] listBookings filter=${JSON.stringify(filter)}`);
-    return Booking.findMany(filter, limit);
+    const bookings = await Booking.findMany(filter, limit);
+    return formatBookings(bookings);
   }
 
   async getBooking(id) {
     const booking = await Booking.findById(id);
     if (!booking) throw new Error('Booking not found');
-    return booking;
+    return formatBooking(booking);
   }
 
   // ——— Orders ———

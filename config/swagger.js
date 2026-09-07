@@ -1272,24 +1272,31 @@ const swaggerDefinition = {
     '/api/admin/bookings': {
       get: {
         tags: ['Admin'],
-        summary: 'List all bookings',
+        summary: 'List draft bookings (quotes not yet converted to orders)',
+        description:
+          'Admin booking screen. Defaults to status draft + submitted (not yet an order). ' +
+          'Each item is formatted like list-orders (customerName, pickupLocation, totalPrice) — ' +
+          'no coordinates, IP, or User-Agent. Pass ?status= to override (draft | submitted | converted_to_order).',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'status', in: 'query', schema: { type: 'string' } },
           { name: 'userId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 100 } },
         ],
-        responses: { 200: { description: 'Bookings' } },
+        responses: { 200: { description: 'Formatted bookings (same card fields as list orders)' } },
       },
     },
     '/api/admin/bookings/{id}': {
       get: {
         tags: ['Admin'],
         summary: 'Get booking',
+        description:
+          'Single formatted booking (same card fields as list-orders). No coordinates, IP, or User-Agent.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
         ],
-        responses: { 200: { description: 'Booking' } },
+        responses: { 200: { description: 'Formatted booking' } },
       },
     },
     '/api/admin/orders': {
