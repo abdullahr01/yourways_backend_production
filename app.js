@@ -17,6 +17,7 @@ const paymentRoutes = require('./routes/payment_router');
 const paymentWebhookRoutes = require('./routes/payment_webhook_router');
 const uploadRoutes = require('./routes/upload_router');
 const imageRoutes = require('./routes/image_router');
+const notificationRoutes = require('./routes/notification_router');
 const signStorageUrls = require('./middleware/signStorageUrls');
 
 const app = express();
@@ -69,6 +70,7 @@ app.use((req, res, next) => {
     const safeBody = { ...req.body };
     if (safeBody.email) safeBody.email = '***';
     if (safeBody.password) safeBody.password = '***';
+    if (safeBody.token) safeBody.token = '***';
     logger.info(`[REQUEST DATA] ${JSON.stringify(safeBody)}`);
   }
   next();
@@ -94,6 +96,7 @@ app.get('/', (req, res) => {
       payments: '/api/payments',
       uploads: '/api/uploads',
       images: '/api/images',
+      notifications: '/api/notifications',
     },
     payments: 'Stripe — a booking must be paid before it becomes an order',
     storage:
@@ -121,6 +124,7 @@ app.use('/api/maps', mapsRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/images', imageRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 logger.info('[APP] All routes registered');
 

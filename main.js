@@ -1,6 +1,7 @@
 require('dotenv').config();
 const app = require('./app');
 require('./config/database');
+const { isConfigured: isFirebaseConfigured } = require('./config/firebase');
 const logger = require('./utils/logger');
 const RevokedToken = require('./models/revoked_token_model');
 
@@ -36,6 +37,9 @@ app.listen(PORT, () => {
     `[MAIN] Payments: Stripe ${process.env.STRIPE_SECRET_KEY ? 'enabled' : 'DISABLED (no key)'} — bookings must be paid before becoming orders`
   );
   logger.info('[MAIN] Realtime: Supabase Broadcast (driver-<id>, order-<id> channels)');
+  logger.info(
+    `[MAIN] Push notifications: FCM ${isFirebaseConfigured() ? 'enabled' : 'DISABLED (FIREBASE_SERVICE_ACCOUNT not set)'}`
+  );
   logger.info('[MAIN] Ready to accept requests');
 
   // House-keeping: drop revoked-token rows that are already past their
