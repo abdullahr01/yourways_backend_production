@@ -1,6 +1,7 @@
 require('dotenv').config();
 const app = require('./app');
 require('./config/database');
+const { isConfigured: isFirebaseConfigured } = require('./config/firebase');
 const logger = require('./utils/logger');
 const RevokedToken = require('./models/revoked_token_model');
 const MetaCapiService = require('./services/meta_capi_service');
@@ -38,6 +39,9 @@ app.listen(PORT, () => {
   );
   logger.info('[MAIN] Realtime: Supabase Broadcast (driver-<id>, order-<id> channels)');
   logger.info(`[MAIN] Meta CAPI: ${MetaCapiService.isEnabled() ? 'enabled' : 'disabled'}`);
+  logger.info(
+    `[MAIN] Push notifications: FCM ${isFirebaseConfigured() ? 'enabled' : 'DISABLED (FIREBASE_SERVICE_ACCOUNT not set)'}`
+  );
   logger.info('[MAIN] Ready to accept requests');
 
   // House-keeping: drop revoked-token rows that are already past their
