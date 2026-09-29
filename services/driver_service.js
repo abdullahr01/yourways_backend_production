@@ -448,7 +448,9 @@ class DriverService {
         [additionalData.pickupSignature] = normalizeProofRefs(orderUuid, [signature], 'pickup signature');
       }
 
-      return await this.updateOrderStatus(driverId, orderUuid, 'pickupCompleted', additionalData);
+      const updated = await this.updateOrderStatus(driverId, orderUuid, 'pickupCompleted', additionalData);
+      await NotificationService.notifyOrderEvent('pickup_completed', updated);
+      return updated;
     } catch (err) {
       logger.error(`[DRIVER SVC] completePickup failed: ${err.message}`);
       throw err;
@@ -500,7 +502,9 @@ class DriverService {
           : comment;
       }
 
-      return await this.updateOrderStatus(driverId, orderUuid, 'completed', additionalData);
+      const updated = await this.updateOrderStatus(driverId, orderUuid, 'completed', additionalData);
+      await NotificationService.notifyOrderEvent('delivered', updated);
+      return updated;
     } catch (err) {
       logger.error(`[DRIVER SVC] completeDelivery failed: ${err.message}`);
       throw err;
