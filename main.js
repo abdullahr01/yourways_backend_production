@@ -40,7 +40,7 @@ app.listen(PORT, () => {
   logger.info('[MAIN] Realtime: Supabase Broadcast (driver-<id>, order-<id> channels)');
   logger.info(`[MAIN] Meta CAPI: ${MetaCapiService.isEnabled() ? 'enabled' : 'disabled'}`);
   logger.info(
-    `[MAIN] Push notifications: FCM ${isFirebaseConfigured() ? 'enabled' : 'DISABLED (FIREBASE_SERVICE_ACCOUNT not set)'}`
+    `[MAIN] Push notifications: FCM ${isFirebaseConfigured() ? 'enabled' : 'DISABLED (FIREBASE_SERVICE_ACCOUNT missing or invalid)'}`
   );
   logger.info('[MAIN] Ready to accept requests');
 
