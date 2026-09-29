@@ -26,7 +26,12 @@ const swaggerDefinition = {
       '`GET /api/images/drivers/{id}` (or the admin list).\n' +
       '- Pickup/delivery proof goes to a **private** bucket. Upload returns a `storageKey` to save on the order; ' +
       'read the pictures with `GET /api/images/orders/{orderId}` (signed URLs, valid one hour — never cache them, ' +
-      'call the images endpoint again).',
+      'call the images endpoint again).\n\n' +
+      '**Push notifications (FCM):** apps register their token with `POST /api/notifications/device-token` after ' +
+      'login and remove it on logout. The server then pushes, once each: driver assigned + new job (admin assigns), ' +
+      'arrived at pickup / dropoff (`POST /api/drivers/{id}/orders/{orderId}/arrived`), pickup completed and ' +
+      'delivered. Every push carries `data: { type, orderUuid, orderCode, status }`; `type` is one of ' +
+      '`driver_assigned`, `new_job`, `arrived_pickup`, `pickup_completed`, `arrived_dropoff`, `delivered`, `test`.',
   },
   servers: [
     {
@@ -477,6 +482,40 @@ const swaggerDefinition = {
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
         ],
         responses: { 200: { description: 'Active orders' } },
+      },
+    },
+    '/api/drivers/{id}/orders/{orderId}/arrived': {
+      post: {
+        tags: ['Drivers'],
+        summary: "I've arrived (pickup or dropoff)",
+        description:
+          'Auth: **driver** (own id). Records `pickupArrivedAt` / `dropoffArrivedAt` once and sends the customer a ' +
+          'push. The order status does not change. `pickup` is accepted while the order is `confirmed`, ' +
+          '`pickupScheduled` or `outForPickup`; `dropoff` while it is `pickupCompleted` or `outForDropOff`. ' +
+          'A repeat tap returns 200 "Arrival was already recorded" with the original time and sends nothing.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'orderId', in: 'path', required: true, schema: { type: 'string' }, description: 'Order UUID or ORD-… code' },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['stage'],
+                properties: { stage: { type: 'string', enum: ['pickup', 'dropoff'] } },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'The formatted order, including pickupArrivedAt / dropoffArrivedAt' },
+          400: { description: 'Unknown stage, or the order is not at a status where that arrival makes sense' },
+          403: { description: "Another driver's id in the URL" },
+          404: { description: 'Order not found or not assigned to this driver' },
+        },
       },
     },
     '/api/drivers/{id}/orders/{orderId}/complete-pickup': {
@@ -1888,6 +1927,94 @@ const swaggerDefinition = {
         responses: {
           200: { description: '{ userId, count, orders[] } — each order matches GET /api/images/orders/{orderId}' },
           403: { description: 'A customer tried to read another customer\'s photos' },
+        },
+      },
+    },
+    '/api/notifications/device-token': {
+      post: {
+        tags: ['Notifications'],
+        summary: "Register this phone's FCM token",
+        description:
+          'Auth: **user**, **driver** or **admin**. Call after login, on every app start and on `onTokenRefresh`. ' +
+          'The owner comes from the JWT. Each role can only register from its own app ' +
+          '(user → `customer`, driver → `driver`, admin → `admin`). Registering the same token again just ' +
+          'refreshes it; if another account owned it (someone else logged in on this phone), it moves to the caller.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['token', 'platform', 'app'],
+                properties: {
+                  token: { type: 'string', description: 'FCM registration token from firebase_messaging' },
+                  platform: { type: 'string', enum: ['android', 'ios'] },
+                  app: { type: 'string', enum: ['customer', 'driver', 'admin'] },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: '{ registered: true, platform, app }' },
+          400: { description: 'Missing or malformed token, unknown platform or app' },
+          401: { description: 'No or invalid JWT' },
+          403: { description: 'The app does not match the login role' },
+        },
+      },
+      delete: {
+        tags: ['Notifications'],
+        summary: 'Remove this phone (logout)',
+        description: 'Auth: any role. Call on logout **before** clearing the JWT. Only removes the token from the caller\'s own account.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { type: 'object', required: ['token'], properties: { token: { type: 'string' } } },
+            },
+          },
+        },
+        responses: {
+          200: { description: '{ removed: true|false }' },
+          400: { description: 'token missing' },
+        },
+      },
+    },
+    '/api/notifications/test': {
+      post: {
+        tags: ['Notifications'],
+        summary: 'Admin: send a test push',
+        description:
+          'Auth: **admin**. Send `{ recipientType, recipientId }` to push to every phone that person has registered ' +
+          '(logged in the `notifications` table as type `test`), or `{ token }` to push straight to one raw FCM token ' +
+          '(not logged). `dryRun: true` asks FCM to validate without delivering. Returns 503 while ' +
+          '`FIREBASE_SERVICE_ACCOUNT` is not set on the server.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  recipientType: { type: 'string', enum: ['user', 'driver', 'admin'] },
+                  recipientId: { type: 'string', format: 'uuid' },
+                  token: { type: 'string', description: 'Raw FCM token (instead of recipientType/recipientId)' },
+                  title: { type: 'string', example: 'YourWays test notification' },
+                  body: { type: 'string', example: 'If you can see this, push notifications are working.' },
+                  dryRun: { type: 'boolean', default: false },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: '{ status: sent|failed|skipped, tokensTargeted, tokensSucceeded, reason? }' },
+          400: { description: 'Neither a valid token nor a valid recipientType + recipientId' },
+          403: { description: 'Not an admin' },
+          503: { description: 'FCM not configured on this server' },
         },
       },
     },

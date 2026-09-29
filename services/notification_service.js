@@ -83,6 +83,8 @@ const errorText = (err) => err?.code ? `${err.code}: ${err.message}` : (err?.mes
 const MIN_TOKEN_LENGTH = 20;
 const MAX_TOKEN_LENGTH = 4096;
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const badRequest = (message, statusCode = 400) => {
   const err = new Error(message);
   err.statusCode = statusCode;
@@ -126,6 +128,58 @@ class NotificationService {
     }
     const removed = await DeviceToken.removeForOwner(token.trim(), ownerType, ownerId);
     return { removed };
+  }
+
+  /**
+   * Admin test push. Either to a person (all their registered devices, logged
+   * in `notifications` with type "test") or straight to one raw FCM token
+   * (not logged — for checking a phone before login registration is wired).
+   * dryRun asks FCM to validate without delivering.
+   */
+  async sendTestNotification({ recipientType, recipientId, token, title, body, dryRun = false } = {}) {
+    if (!firebase.isConfigured()) {
+      throw badRequest('Push notifications are not configured on this server (FIREBASE_SERVICE_ACCOUNT missing)', 503);
+    }
+    const message = {
+      title: typeof title === 'string' && title.trim() ? title.trim().slice(0, 100) : 'YourWays test notification',
+      body: typeof body === 'string' && body.trim() ? body.trim().slice(0, 300) : 'If you can see this, push notifications are working.',
+      data: { type: 'test' },
+    };
+    const isDryRun = dryRun === true;
+
+    if (token !== undefined) {
+      if (typeof token !== 'string' || token.trim().length < MIN_TOKEN_LENGTH || token.length > MAX_TOKEN_LENGTH) {
+        throw badRequest('token must be an FCM registration token');
+      }
+      try {
+        const { succeeded, deadTokens, firstError } = await this._sendToTokens([token.trim()], message, isDryRun);
+        logger.info(`[NOTIFICATION SVC] Test push to raw token ${succeeded ? 'sent' : 'failed'}${isDryRun ? ' (dry run)' : ''}`);
+        return {
+          status: succeeded ? 'sent' : 'failed',
+          dryRun: isDryRun,
+          ...(firstError && { reason: firstError }),
+          ...(deadTokens.length && { tokenIsDead: true }),
+        };
+      } catch (err) {
+        return { status: 'failed', dryRun: isDryRun, reason: errorText(err) };
+      }
+    }
+
+    if (!DeviceToken.OWNER_TYPES.includes(recipientType)) {
+      throw badRequest(`Send either token, or recipientType (${DeviceToken.OWNER_TYPES.join(', ')}) and recipientId`);
+    }
+    if (typeof recipientId !== 'string' || !UUID_RE.test(recipientId)) {
+      throw badRequest('recipientId must be the UUID of the user, driver or admin');
+    }
+    return this.sendToRecipient({
+      recipientType,
+      recipientId,
+      type: 'test',
+      title: message.title,
+      body: message.body,
+      data: message.data,
+      dryRun: isDryRun,
+    });
   }
 
   /**
