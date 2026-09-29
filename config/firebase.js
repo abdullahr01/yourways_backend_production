@@ -1,4 +1,5 @@
-const admin = require('firebase-admin');
+const { initializeApp, cert } = require('firebase-admin/app');
+const { getMessaging: getAppMessaging } = require('firebase-admin/messaging');
 const logger = require('../utils/logger');
 
 /**
@@ -32,8 +33,8 @@ const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
 if (raw) {
   try {
     const account = parseServiceAccount(raw);
-    const app = admin.initializeApp({ credential: admin.credential.cert(account) });
-    messaging = admin.messaging(app);
+    const app = initializeApp({ credential: cert(account) });
+    messaging = getAppMessaging(app);
     projectId = account.project_id;
     logger.success(`[FIREBASE] Messaging ready (project ${projectId})`);
   } catch (err) {
