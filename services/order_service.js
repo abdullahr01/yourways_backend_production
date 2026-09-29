@@ -266,6 +266,10 @@ class OrderService {
         orderId: order.orderId,
         status: order.status,
         timeline,
+        // Separate fields, not timeline steps: the website's progress bar is
+        // positioned by timeline length, so extra steps would shift it.
+        pickupArrivedAt: order.pickupArrivedAt,
+        dropoffArrivedAt: order.dropoffArrivedAt,
         driver: formatDriver(order.driver),
         driverLocation,
         eta,
