@@ -32,6 +32,22 @@ class NotificationController {
       return errorResponse(res, err.statusCode || 500, 'Failed to unregister device', err.message);
     }
   }
+
+  /**
+   * Admin: send a test push to a person's devices or to one raw token.
+   * POST /api/notifications/test
+   *   body: { recipientType, recipientId } or { token }, plus optional title, body, dryRun
+   */
+  async sendTest(req, res) {
+    try {
+      logger.info(`[NOTIFICATION CTRL] === TEST PUSH by admin ${req.auth?.id} ===`);
+      const result = await NotificationService.sendTestNotification(req.body || {});
+      return successResponse(res, 200, `Test notification ${result.status}`, result);
+    } catch (err) {
+      logger.error(`[NOTIFICATION CTRL] test push failed: ${err.message}`);
+      return errorResponse(res, err.statusCode || 500, 'Failed to send test notification', err.message);
+    }
+  }
 }
 
 module.exports = new NotificationController();

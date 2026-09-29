@@ -13,4 +13,6 @@ const anyRole = requireAuth(['user', 'driver', 'admin']);
 router.post('/device-token', anyRole, NotificationController.registerDeviceToken);
 router.delete('/device-token', anyRole, NotificationController.removeDeviceToken);
 
+router.post('/test', requireAuth('admin'), NotificationController.sendTest);
+
 module.exports = router;
