@@ -5,6 +5,7 @@ const Driver = require('../models/driver_model');
 const Payment = require('../models/payment_model');
 const MapsService = require('./maps_service');
 const RealtimeService = require('./realtime_service');
+const NotificationService = require('./notification_service');
 const logger = require('../utils/logger');
 const { formatOrder, formatOrders, formatDriver } = require('../utils/orderFormatter');
 const { formatDriverLocation } = require('../utils/locationFormatter');
@@ -510,6 +511,10 @@ class OrderService {
       const order = await Order.updateById(orderId, updateData);
       logger.success(`[ORDER SVC] Driver ${driver.name} assigned to ${order.orderId}`);
       await RealtimeService.broadcastOrderUpdate(order);
+      await Promise.all([
+        NotificationService.notifyOrderEvent('driver_assigned', order, { driver }),
+        NotificationService.notifyOrderEvent('new_job', order, { driver }),
+      ]);
       return formatOrder(order);
     } catch (err) {
       logger.error(`[ORDER SVC] assignDriver failed: ${err.message}`);
