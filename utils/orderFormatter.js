@@ -44,6 +44,8 @@ const formatOrder = (order) => {
     deliveryDateTime: order.deliveryDateTime,
     createdAt: order.createdAt,
     completedAt: order.completedAt,
+    pickupArrivedAt: order.pickupArrivedAt ?? null,
+    dropoffArrivedAt: order.dropoffArrivedAt ?? null,
     pickupPropertyType: order.pickupPropertyType,
     deliveryPropertyType: order.deliveryPropertyType,
     pickupFloorLevel: order.pickupFloorLevel,

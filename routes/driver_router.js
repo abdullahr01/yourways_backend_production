@@ -66,6 +66,12 @@ router.patch(
   DriverController.updateOrderStatus
 );
 router.post(
+  '/:id/orders/:orderId/arrived',
+  requireAuth('driver'),
+  requireSelf('id'),
+  DriverController.markArrived
+);
+router.post(
   '/:id/orders/:orderId/complete-pickup',
   requireAuth('driver'),
   requireSelf('id'),

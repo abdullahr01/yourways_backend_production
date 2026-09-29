@@ -66,6 +66,9 @@ const mapOrder = (row) => {
     pickupCompletedAt: row.pickup_completed_at,
     deliveryCompletedAt: row.delivery_completed_at,
     completedAt: row.completed_at,
+    // Set once by the driver's "I've arrived" button (sql/010_notifications.sql).
+    pickupArrivedAt: row.pickup_arrived_at ?? null,
+    dropoffArrivedAt: row.dropoff_arrived_at ?? null,
     pickupPropertyType: row.pickup_property_type,
     deliveryPropertyType: row.delivery_property_type,
     pickupFloorLevel: row.pickup_floor_level,
@@ -192,6 +195,8 @@ const toDbUpdate = (data) => {
     pickup_completed_at: data.pickupCompletedAt ?? data.pickup_completed_at,
     delivery_completed_at: data.deliveryCompletedAt ?? data.delivery_completed_at,
     completed_at: data.completedAt ?? data.completed_at,
+    pickup_arrived_at: data.pickupArrivedAt ?? data.pickup_arrived_at,
+    dropoff_arrived_at: data.dropoffArrivedAt ?? data.dropoff_arrived_at,
     pickup_property_type: data.pickupPropertyType ?? data.pickup_property_type,
     delivery_property_type: data.deliveryPropertyType ?? data.delivery_property_type,
     pickup_floor_level: data.pickupFloorLevel ?? data.pickup_floor_level,

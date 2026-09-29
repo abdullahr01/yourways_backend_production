@@ -1,6 +1,7 @@
 const Driver = require('../models/driver_model');
 const Order = require('../models/order_model');
 const RealtimeService = require('./realtime_service');
+const NotificationService = require('./notification_service');
 const logger = require('../utils/logger');
 const { formatOrder, formatOrders } = require('../utils/orderFormatter');
 const { formatDriverLocation } = require('../utils/locationFormatter');
@@ -16,6 +17,27 @@ const DRIVER_ACTIVE_STATUSES = [
 ];
 
 const MAX_PROOF_PHOTOS = 12;
+
+// "I've arrived" button: which statuses each stage is accepted in, where the
+// time is stored, and which push the customer gets.
+const ARRIVAL_STAGES = {
+  pickup: {
+    allowedStatuses: ['confirmed', 'pickupScheduled', 'outForPickup'],
+    field: 'pickupArrivedAt',
+    notification: 'arrived_pickup',
+  },
+  dropoff: {
+    allowedStatuses: ['pickupCompleted', 'outForDropOff'],
+    field: 'dropoffArrivedAt',
+    notification: 'arrived_dropoff',
+  },
+};
+
+const withStatus = (message, statusCode) => {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  return err;
+};
 
 /**
  * Proof references must point at this order's own folder in the private bucket
@@ -353,6 +375,51 @@ class DriverService {
       return formatOrder(updated);
     } catch (err) {
       logger.error(`[DRIVER SVC] updateOrderStatus failed: ${err.message}`);
+      throw err;
+    }
+  }
+
+  /**
+   * Driver's "I've arrived" button. Records the arrival time once (a second
+   * tap keeps the first time) and tells the customer. The order status is
+   * not changed — arrival is extra information alongside it.
+   * Returns { order, alreadyArrived }.
+   */
+  async markArrived(driverId, orderId, stage) {
+    try {
+      logger.info(`[DRIVER SVC] markArrived driver=${driverId} order=${orderId} stage=${stage}`);
+      const rule = ARRIVAL_STAGES[stage];
+      if (!rule) {
+        throw withStatus(`stage must be one of: ${Object.keys(ARRIVAL_STAGES).join(', ')}`, 400);
+      }
+
+      const order = await Order.findByUuidOrCode(orderId);
+      if (!order || order.driverId !== driverId) {
+        throw withStatus('Order not found or not assigned to this driver', 404);
+      }
+      if (!rule.allowedStatuses.includes(order.status)) {
+        throw withStatus(
+          `Can't mark arrival at ${stage} while the order is ${order.status} (allowed: ${rule.allowedStatuses.join(', ')})`,
+          400
+        );
+      }
+
+      const alreadyArrived = Boolean(order[rule.field]);
+      const updated = alreadyArrived
+        ? order
+        : await Order.updateById(order._id, { [rule.field]: new Date().toISOString() });
+
+      if (alreadyArrived) {
+        logger.info(`[DRIVER SVC] ${order.orderId} already arrived at ${stage} (${order[rule.field]})`);
+      } else {
+        logger.success(`[DRIVER SVC] ${updated.orderId} driver arrived at ${stage}`);
+        await RealtimeService.broadcastOrderUpdate(updated);
+      }
+      await NotificationService.notifyOrderEvent(rule.notification, updated);
+
+      return { order: formatOrder(updated), alreadyArrived };
+    } catch (err) {
+      logger.error(`[DRIVER SVC] markArrived failed: ${err.message}`);
       throw err;
     }
   }

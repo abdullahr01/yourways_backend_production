@@ -277,6 +277,26 @@ class DriverController {
     }
   }
 
+  async markArrived(req, res) {
+    try {
+      const { id, orderId } = req.params;
+      const { stage } = req.body || {};
+
+      logger.info(`[DRIVER CTRL] Arrived: driver=${id} order=${orderId} stage=${stage}`);
+
+      const { order, alreadyArrived } = await DriverService.markArrived(id, orderId, stage);
+      successResponse(
+        res,
+        200,
+        alreadyArrived ? 'Arrival was already recorded' : 'Arrival recorded',
+        order
+      );
+    } catch (err) {
+      logger.error(`[ERROR] ❌ Mark arrived failed: ${err.message}`);
+      errorResponse(res, err.statusCode || 400, 'Failed to record arrival', err);
+    }
+  }
+
   async completePickup(req, res) {
     try {
       const { id, orderId } = req.params;
