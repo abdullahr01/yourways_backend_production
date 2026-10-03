@@ -5,6 +5,18 @@ const { stripUndefined } = require('../utils/caseMapper');
 
 const TABLE = 'bookings';
 
+// `bookings.manpower_required` is a Postgres enum (sql/001); the website's
+// one-person labels aren't values of it and would fail the insert.
+const MANPOWER_ALIASES = {
+  'driver only': '1 Man (Driver Assisted)',
+  '1 man': '1 Man (Driver Assisted)',
+};
+
+const normalizeManpower = (value) => {
+  if (typeof value !== 'string') return value;
+  return MANPOWER_ALIASES[value.trim().toLowerCase()] || value;
+};
+
 const mapBooking = (row) => {
   if (!row) return null;
   const items = row.items || [];
@@ -90,7 +102,7 @@ const toDbInsert = (data) =>
     collection_lift_access: data.collectionLiftAccess ?? data.collection_lift_access,
     delivery_lift_access: data.deliveryLiftAccess ?? data.delivery_lift_access,
     parking_access: data.parkingAccess || data.parking_access,
-    manpower_required: data.manpowerRequired || data.manpower_required,
+    manpower_required: normalizeManpower(data.manpowerRequired || data.manpower_required),
     dismantling_required: data.dismantlingRequired ?? data.dismantling_required,
     packing_service: data.packingService || data.packing_service,
     insurance_value: data.insuranceValue ?? data.insurance_value ?? 0,
@@ -130,7 +142,7 @@ const toDbUpdate = (data) =>
     collection_lift_access: data.collectionLiftAccess ?? data.collection_lift_access,
     delivery_lift_access: data.deliveryLiftAccess ?? data.delivery_lift_access,
     parking_access: data.parkingAccess ?? data.parking_access,
-    manpower_required: data.manpowerRequired ?? data.manpower_required,
+    manpower_required: normalizeManpower(data.manpowerRequired ?? data.manpower_required),
     dismantling_required: data.dismantlingRequired ?? data.dismantling_required,
     packing_service: data.packingService ?? data.packing_service,
     insurance_value: data.insuranceValue ?? data.insurance_value,
