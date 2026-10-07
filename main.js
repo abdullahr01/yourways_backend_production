@@ -40,6 +40,11 @@ app.listen(PORT, () => {
   logger.info(
     `[MAIN] Push notifications: FCM ${isFirebaseConfigured() ? 'enabled' : 'DISABLED (FIREBASE_SERVICE_ACCOUNT missing or invalid)'}`
   );
+  if (isFirebaseConfigured()) {
+    logger.info('[MAIN] Customer/driver login: Firebase phone verification required (firebaseIdToken)');
+  } else {
+    logger.warn('[MAIN] Customer/driver login: NOT phone-verified (Firebase not configured) — never run production like this');
+  }
   logger.info('[MAIN] Ready to accept requests');
 
   // House-keeping: drop revoked-token rows that are already past their

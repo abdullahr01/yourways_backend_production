@@ -71,6 +71,7 @@ app.use((req, res, next) => {
     if (safeBody.email) safeBody.email = '***';
     if (safeBody.password) safeBody.password = '***';
     if (safeBody.token) safeBody.token = '***';
+    if (safeBody.firebaseIdToken) safeBody.firebaseIdToken = '***';
     logger.info(`[REQUEST DATA] ${JSON.stringify(safeBody)}`);
   }
   next();

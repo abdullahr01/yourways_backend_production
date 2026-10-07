@@ -11,7 +11,7 @@ class DriverController {
 
   async login(req, res) {
     try {
-      const { phone } = req.body;
+      const { phone, firebaseIdToken } = req.body;
       logger.info(`[INFO] 🔐 Driver login attempt: ${phone}`);
       
       if (!phone) {
@@ -19,7 +19,7 @@ class DriverController {
         return errorResponse(res, 400, 'Phone number is required');
       }
 
-      const result = await DriverService.loginDriver(phone);
+      const result = await DriverService.loginDriver(phone, firebaseIdToken);
 
       if (!result.success) {
         logger.warn(`[WARN] Login unsuccessful: ${result.message}`);
@@ -34,7 +34,7 @@ class DriverController {
       });
     } catch (err) {
       logger.error(`[ERROR] ❌ Driver login failed: ${err.message}`);
-      errorResponse(res, 400, 'Driver login failed', err);
+      errorResponse(res, err.statusCode || 400, 'Driver login failed', err);
     }
   }
 

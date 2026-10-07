@@ -148,6 +148,7 @@ class OrderService {
       logger.success(
         `[ORDER SVC] Created ${order.orderId} from booking ${bookingId} price=£${order.totalPrice}`
       );
+      await NotificationService.notifyStatusChange(order);
       return formatOrder(order);
     } catch (err) {
       logger.error(`[ORDER SVC] createFromBooking failed: ${err.message}`);
@@ -199,6 +200,7 @@ class OrderService {
 
       const order = await Order.create(orderData);
       logger.success(`[ORDER SVC] Created ${order.orderId}`);
+      await NotificationService.notifyStatusChange(order);
       return formatOrder(order);
     } catch (err) {
       logger.error(`[ORDER SVC] create failed: ${err.message}`);
@@ -485,6 +487,7 @@ class OrderService {
       const order = await Order.updateById(orderId, updateData);
       logger.success(`[ORDER SVC] ${order.orderId} → ${newStatus}`);
       await RealtimeService.broadcastOrderUpdate(order);
+      await NotificationService.notifyStatusChange(order);
       return formatOrder(order);
     } catch (err) {
       logger.error(`[ORDER SVC] updateStatus failed: ${err.message}`);
@@ -516,8 +519,8 @@ class OrderService {
       logger.success(`[ORDER SVC] Driver ${driver.name} assigned to ${order.orderId}`);
       await RealtimeService.broadcastOrderUpdate(order);
       await Promise.all([
-        NotificationService.notifyOrderEvent('driver_assigned', order, { driver }),
         NotificationService.notifyOrderEvent('new_job', order, { driver }),
+        updateData.status && NotificationService.notifyStatusChange(order),
       ]);
       return formatOrder(order);
     } catch (err) {
@@ -568,6 +571,7 @@ class OrderService {
       logger.info(`[ORDER SVC] update id=${orderId}`);
       const order = await Order.updateById(orderId, updateData);
       await RealtimeService.broadcastOrderUpdate(order);
+      if (updateData?.status) await NotificationService.notifyStatusChange(order);
       return formatOrder(order);
     } catch (err) {
       logger.error(`[ORDER SVC] update failed: ${err.message}`);
@@ -583,6 +587,7 @@ class OrderService {
         status: 'pickupScheduled',
       });
       await RealtimeService.broadcastOrderUpdate(order);
+      await NotificationService.notifyStatusChange(order);
       return formatOrder(order);
     } catch (err) {
       logger.error(`[ORDER SVC] schedulePickup failed: ${err.message}`);

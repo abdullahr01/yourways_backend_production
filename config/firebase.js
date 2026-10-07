@@ -1,9 +1,11 @@
 const { initializeApp, cert } = require('firebase-admin/app');
 const { getMessaging: getAppMessaging } = require('firebase-admin/messaging');
+const { getAuth: getAppAuth } = require('firebase-admin/auth');
 const logger = require('../utils/logger');
 
 /**
- * Firebase Admin, used only to send FCM push notifications.
+ * Firebase Admin: sends FCM push notifications and verifies the phone-OTP
+ * ID tokens the apps send on login and register.
  *
  * FIREBASE_SERVICE_ACCOUNT holds the service-account key from the SAME
  * Firebase project the Flutter apps use (Console → Project settings →
@@ -11,7 +13,8 @@ const logger = require('../utils/logger');
  * JSON base64-encoded is accepted, since multi-line JSON is awkward to paste
  * into some hosting dashboards.
  *
- * Without it the rest of the API runs normally and notifications are skipped.
+ * Without it the rest of the API runs normally, notifications are skipped
+ * and logins are not phone-verified (local development only).
  */
 
 const parseServiceAccount = (raw) => {
@@ -26,6 +29,7 @@ const parseServiceAccount = (raw) => {
 };
 
 let messaging = null;
+let auth = null;
 let projectId = null;
 
 const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -35,6 +39,7 @@ if (raw) {
     const account = parseServiceAccount(raw);
     const app = initializeApp({ credential: cert(account) });
     messaging = getAppMessaging(app);
+    auth = getAppAuth(app);
     projectId = account.project_id;
     logger.success(`[FIREBASE] Messaging ready (project ${projectId})`);
   } catch (err) {
@@ -46,6 +51,8 @@ if (raw) {
 
 const getMessaging = () => messaging;
 
+const getAuth = () => auth;
+
 const isConfigured = () => Boolean(messaging);
 
-module.exports = { getMessaging, isConfigured, projectId };
+module.exports = { getMessaging, getAuth, isConfigured, projectId };

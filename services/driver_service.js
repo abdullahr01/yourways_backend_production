@@ -2,6 +2,7 @@ const Driver = require('../models/driver_model');
 const Order = require('../models/order_model');
 const RealtimeService = require('./realtime_service');
 const NotificationService = require('./notification_service');
+const PhoneVerification = require('./phone_verification_service');
 const logger = require('../utils/logger');
 const { formatOrder, formatOrders } = require('../utils/orderFormatter');
 const { formatDriverLocation } = require('../utils/locationFormatter');
@@ -18,18 +19,17 @@ const DRIVER_ACTIVE_STATUSES = [
 
 const MAX_PROOF_PHOTOS = 12;
 
-// "I've arrived" button: which statuses each stage is accepted in, where the
-// time is stored, and which push the customer gets.
+// "I've arrived" button: which statuses each stage is accepted in and where
+// the time is stored. No push: the customer already gets one when the driver
+// moves the order to outForPickup / outForDropOff.
 const ARRIVAL_STAGES = {
   pickup: {
     allowedStatuses: ['confirmed', 'pickupScheduled', 'outForPickup'],
     field: 'pickupArrivedAt',
-    notification: 'arrived_pickup',
   },
   dropoff: {
     allowedStatuses: ['pickupCompleted', 'outForDropOff'],
     field: 'dropoffArrivedAt',
-    notification: 'arrived_dropoff',
   },
 };
 
@@ -110,9 +110,10 @@ class DriverService {
     }
   }
 
-  async loginDriver(phone) {
+  async loginDriver(phone, firebaseIdToken) {
     try {
       logger.info(`[DRIVER SVC] Login phone=${phone}`);
+      await PhoneVerification.assertOwnsPhone(phone, firebaseIdToken);
       const driver = await Driver.findByPhone(phone);
       if (!driver) throw new Error('Driver not found');
 
@@ -372,6 +373,7 @@ class DriverService {
       const updated = await Order.updateById(order._id, updateData);
       logger.success(`[DRIVER SVC] Order ${updated.orderId} → ${newStatus}`);
       await RealtimeService.broadcastOrderUpdate(updated);
+      await NotificationService.notifyStatusChange(updated);
       return formatOrder(updated);
     } catch (err) {
       logger.error(`[DRIVER SVC] updateOrderStatus failed: ${err.message}`);
@@ -381,8 +383,8 @@ class DriverService {
 
   /**
    * Driver's "I've arrived" button. Records the arrival time once (a second
-   * tap keeps the first time) and tells the customer. The order status is
-   * not changed — arrival is extra information alongside it.
+   * tap keeps the first time). The order status is not changed — arrival is
+   * extra information alongside it.
    * Returns { order, alreadyArrived }.
    */
   async markArrived(driverId, orderId, stage) {
@@ -415,7 +417,6 @@ class DriverService {
         logger.success(`[DRIVER SVC] ${updated.orderId} driver arrived at ${stage}`);
         await RealtimeService.broadcastOrderUpdate(updated);
       }
-      await NotificationService.notifyOrderEvent(rule.notification, updated);
 
       return { order: formatOrder(updated), alreadyArrived };
     } catch (err) {
@@ -448,9 +449,7 @@ class DriverService {
         [additionalData.pickupSignature] = normalizeProofRefs(orderUuid, [signature], 'pickup signature');
       }
 
-      const updated = await this.updateOrderStatus(driverId, orderUuid, 'pickupCompleted', additionalData);
-      await NotificationService.notifyOrderEvent('pickup_completed', updated);
-      return updated;
+      return await this.updateOrderStatus(driverId, orderUuid, 'pickupCompleted', additionalData);
     } catch (err) {
       logger.error(`[DRIVER SVC] completePickup failed: ${err.message}`);
       throw err;
@@ -502,9 +501,7 @@ class DriverService {
           : comment;
       }
 
-      const updated = await this.updateOrderStatus(driverId, orderUuid, 'completed', additionalData);
-      await NotificationService.notifyOrderEvent('delivered', updated);
-      return updated;
+      return await this.updateOrderStatus(driverId, orderUuid, 'completed', additionalData);
     } catch (err) {
       logger.error(`[DRIVER SVC] completeDelivery failed: ${err.message}`);
       throw err;

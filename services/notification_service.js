@@ -22,58 +22,92 @@ const MAX_TOKENS_PER_SEND = 500;
 
 const orderCodeOf = (order) => order?.orderId || order?.id || '';
 
-const vehicleOf = (driver) =>
-  [driver?.vehicleType, driver?.vehicleNumber].filter(Boolean).join(', ');
-
-const placeOf = (postcode, location) => postcode || location || 'address on the job';
+const UK_TIME_ZONE = 'Europe/London';
 
 /**
- * Wording and recipient for each order event. `recipient` returns who gets
- * it; `dedupe` is the part of the key that makes it "once only".
+ * Pickup time in UK time, e.g. "Sun 4 Oct 2026, 10:30". A value at exactly
+ * midnight UTC came from a date-only pick (the booking's move date), so only
+ * the date is shown.
+ */
+const pickupTimeOf = (order) => {
+  const date = order?.pickupDateTime ? new Date(order.pickupDateTime) : null;
+  if (!date || Number.isNaN(date.getTime())) return 'to be confirmed';
+  const dateOnly =
+    date.getUTCHours() === 0 && date.getUTCMinutes() === 0 && date.getUTCSeconds() === 0;
+  const options = { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' };
+  if (dateOnly) return date.toLocaleDateString('en-GB', { ...options, timeZone: 'UTC' });
+  return date.toLocaleString('en-GB', {
+    ...options,
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: UK_TIME_ZONE,
+  });
+};
+
+const customer = (order) => ({ type: 'user', id: order.userId });
+const onceForCustomer = (type) => (order) => `${order._id}:${type}:user:${order.userId}`;
+
+/**
+ * Wording and recipient for each order event (wording agreed with the app
+ * developer). `recipient` returns who gets it; `dedupe` is the part of the
+ * key that makes it "once only".
  */
 const ORDER_EVENTS = {
-  driver_assigned: {
-    recipient: (order) => ({ type: 'user', id: order.userId }),
-    // Includes the driver so a re-assignment to someone else notifies again.
-    dedupe: (order, driver) => `${order._id}:driver_assigned:${driver?.id || order.driverId}:user:${order.userId}`,
-    title: () => 'Driver assigned',
-    body: (order, driver) => {
-      const name = driver?.name || 'A driver';
-      const vehicle = vehicleOf(driver);
-      return `${name}${vehicle ? ` (${vehicle})` : ''} will handle your order ${orderCodeOf(order)}.`;
-    },
+  order_received: {
+    recipient: customer,
+    dedupe: onceForCustomer('order_received'),
+    title: () => 'Order received',
+    body: (order) => `We've received your order ${orderCodeOf(order)}. Please wait for confirmation.`,
+  },
+  order_confirmed: {
+    recipient: customer,
+    dedupe: onceForCustomer('order_confirmed'),
+    title: () => 'Order confirmed',
+    body: (order) => `Your order ${orderCodeOf(order)} is confirmed. Pickup: ${pickupTimeOf(order)}.`,
   },
   new_job: {
     recipient: (order, driver) => ({ type: 'driver', id: driver?.id || order.driverId }),
+    // Includes the driver so a re-assignment to someone else notifies them too.
     dedupe: (order, driver) => `${order._id}:new_job:driver:${driver?.id || order.driverId}`,
-    title: () => 'New job assigned',
-    body: (order) =>
-      `${placeOf(order.pickupPostcode, order.pickupLocation)} → ${placeOf(order.deliveryPostcode, order.deliveryLocation)} · ${orderCodeOf(order)}`,
+    title: () => 'New order',
+    body: (order) => `You've got a new order: ${orderCodeOf(order)}.`,
   },
-  arrived_pickup: {
-    recipient: (order) => ({ type: 'user', id: order.userId }),
-    dedupe: (order) => `${order._id}:arrived_pickup:user:${order.userId}`,
-    title: () => 'Your driver has arrived',
-    body: (order) => `Your driver is at the pickup address for order ${orderCodeOf(order)}.`,
+  pickup_started: {
+    recipient: customer,
+    dedupe: onceForCustomer('pickup_started'),
+    title: () => 'Driver at pickup',
+    body: () => 'Your driver has arrived and is starting the pickup.',
   },
   pickup_completed: {
-    recipient: (order) => ({ type: 'user', id: order.userId }),
-    dedupe: (order) => `${order._id}:pickup_completed:user:${order.userId}`,
-    title: () => 'Items collected',
-    body: (order) => `Your items for order ${orderCodeOf(order)} have been collected. Tap to see the photos.`,
+    recipient: customer,
+    dedupe: onceForCustomer('pickup_completed'),
+    title: () => 'Pickup complete',
+    body: () => 'Your items are collected and heading to the drop-off.',
   },
-  arrived_dropoff: {
-    recipient: (order) => ({ type: 'user', id: order.userId }),
-    dedupe: (order) => `${order._id}:arrived_dropoff:user:${order.userId}`,
-    title: () => 'Your driver has arrived',
-    body: (order) => `Your driver is at the delivery address for order ${orderCodeOf(order)}.`,
+  dropoff_started: {
+    recipient: customer,
+    dedupe: onceForCustomer('dropoff_started'),
+    title: () => 'Drop-off started',
+    body: () => 'Your driver has started the drop-off.',
   },
   delivered: {
-    recipient: (order) => ({ type: 'user', id: order.userId }),
-    dedupe: (order) => `${order._id}:delivered:user:${order.userId}`,
-    title: () => 'Delivered',
-    body: (order) => `Order ${orderCodeOf(order)} has been delivered. Thank you for choosing YourWays!`,
+    recipient: customer,
+    dedupe: onceForCustomer('delivered'),
+    title: () => 'Order completed',
+    body: (order) => `Your order ${orderCodeOf(order)} has been delivered. Thank you for using YourWays!`,
   },
+};
+
+// The customer push for an order entering each status. Confirming and
+// scheduling share one push, so the customer hears "confirmed" once.
+const STATUS_EVENTS = {
+  pending: 'order_received',
+  confirmed: 'order_confirmed',
+  pickupScheduled: 'order_confirmed',
+  outForPickup: 'pickup_started',
+  pickupCompleted: 'pickup_completed',
+  outForDropOff: 'dropoff_started',
+  completed: 'delivered',
 };
 
 const errorText = (err) => err?.code ? `${err.code}: ${err.message}` : (err?.message || String(err));
@@ -222,6 +256,18 @@ class NotificationService {
   }
 
   /**
+   * Customer push for the status the order is now in (see STATUS_EVENTS).
+   * Call it after every status write; the dedupe key keeps each push to
+   * once per order, so repeated or backwards status changes don't resend.
+   * Never throws.
+   */
+  async notifyStatusChange(order) {
+    const type = STATUS_EVENTS[order?.status];
+    if (!type) return { status: 'skipped', reason: `no push for status ${order?.status}` };
+    return this.notifyOrderEvent(type, order);
+  }
+
+  /**
    * Claim the dedupe slot, send to every device the recipient has, clean up
    * dead tokens and log the outcome. Never throws.
    * Returns { status: sent|failed|skipped|duplicate, ... }.
@@ -332,3 +378,4 @@ class NotificationService {
 
 module.exports = new NotificationService();
 module.exports.ORDER_EVENT_TYPES = Object.keys(ORDER_EVENTS);
+module.exports.STATUS_EVENTS = STATUS_EVENTS;

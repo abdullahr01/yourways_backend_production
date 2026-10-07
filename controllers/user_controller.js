@@ -30,13 +30,13 @@ class UserController {
       });
     } catch (err) {
       logger.error(`[USER CTRL] Register failed: ${err.message}`);
-      return errorResponse(res, 400, 'User registration failed', err);
+      return errorResponse(res, err.statusCode || 400, 'User registration failed', err);
     }
   }
 
   async login(req, res) {
     try {
-      const { phone } = req.body;
+      const { phone, firebaseIdToken } = req.body;
       logger.info('[USER CTRL] === LOGIN ===');
       logger.info(`[USER CTRL] phone=${phone} IP=${req.ip}`);
 
@@ -44,7 +44,7 @@ class UserController {
         return errorResponse(res, 400, 'Phone number is required', new Error('Phone number missing'));
       }
 
-      const { user, token } = await UserService.loginUser(phone);
+      const { user, token } = await UserService.loginUser(phone, firebaseIdToken);
 
       logger.success(`[USER CTRL] Login OK id=${user.id}`);
       return successResponse(res, 200, 'Login successful', {
@@ -91,6 +91,25 @@ class UserController {
     } catch (err) {
       logger.error(`[USER CTRL] checkPhone failed: ${err.message}`);
       return errorResponse(res, 400, 'Phone check failed', err);
+    }
+  }
+
+  async checkAvailability(req, res) {
+    try {
+      const { phone, email } = req.body || {};
+      logger.info(`[USER CTRL] === CHECK AVAILABILITY === IP=${req.ip}`);
+
+      const hasPhone = typeof phone === 'string' && phone.trim();
+      const hasEmail = typeof email === 'string' && email.trim();
+      if (!hasPhone && !hasEmail) {
+        return errorResponse(res, 400, 'Send phone, email or both', new Error('phone and email missing'));
+      }
+
+      const result = await UserService.checkAvailability({ phone, email });
+      return successResponse(res, 200, 'Availability checked', result);
+    } catch (err) {
+      logger.error(`[USER CTRL] checkAvailability failed: ${err.message}`);
+      return errorResponse(res, 400, 'Availability check failed', err);
     }
   }
 

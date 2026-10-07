@@ -28,10 +28,14 @@ const swaggerDefinition = {
       'read the pictures with `GET /api/images/orders/{orderId}` (signed URLs, valid one hour — never cache them, ' +
       'call the images endpoint again).\n\n' +
       '**Push notifications (FCM):** apps register their token with `POST /api/notifications/device-token` after ' +
-      'login and remove it on logout. The server then pushes, once each: driver assigned + new job (admin assigns), ' +
-      'arrived at pickup / dropoff (`POST /api/drivers/{id}/orders/{orderId}/arrived`), pickup completed and ' +
-      'delivered. Every push carries `data: { type, orderUuid, orderCode, status }`; `type` is one of ' +
-      '`driver_assigned`, `new_job`, `arrived_pickup`, `pickup_completed`, `arrived_dropoff`, `delivered`, `test`.',
+      'login and remove it on logout. The server pushes on every order status change, once each per order: ' +
+      '`order_received` (order created, pending), `order_confirmed` (confirmed or pickupScheduled), ' +
+      '`pickup_started` (outForPickup), `pickup_completed`, `dropoff_started` (outForDropOff) and `delivered` ' +
+      '(completed) go to the customer; `new_job` goes to the driver when assigned. "I\'ve arrived" ' +
+      '(`POST /api/drivers/{id}/orders/{orderId}/arrived`) only records the time and sends no push. Every push ' +
+      'carries `data: { type, orderUuid, orderCode, status }`; admin test pushes use `type: test`.\n\n' +
+      '**Login:** customer register/login and driver login need `firebaseIdToken` (from the Firebase phone OTP) ' +
+      'whose verified phone number matches `phone`; otherwise `401`.',
   },
   servers: [
     {
@@ -86,16 +90,31 @@ const swaggerDefinition = {
       },
       UserRegister: {
         type: 'object',
-        required: ['name', 'email', 'phone'],
+        required: ['name', 'email', 'phone', 'firebaseIdToken'],
         properties: {
           name: { type: 'string', example: 'Ali Khan' },
           email: { type: 'string', example: 'ali@example.com' },
           phone: { type: 'string', example: '+447700900123' },
           address: { type: 'string', example: 'London' },
           dob: { type: 'string', format: 'date', example: '1995-01-15' },
+          firebaseIdToken: {
+            type: 'string',
+            description: 'ID token from the Firebase phone OTP sign-in; its phone number must match `phone`',
+          },
         },
       },
       UserLogin: {
+        type: 'object',
+        required: ['phone', 'firebaseIdToken'],
+        properties: {
+          phone: { type: 'string', example: '+447700900123' },
+          firebaseIdToken: {
+            type: 'string',
+            description: 'ID token from the Firebase phone OTP sign-in; its phone number must match `phone`',
+          },
+        },
+      },
+      PhoneOnly: {
         type: 'object',
         required: ['phone'],
         properties: {
@@ -249,13 +268,14 @@ const swaggerDefinition = {
         responses: {
           201: { description: 'Registered — returns user + JWT' },
           400: { description: 'Failed' },
+          401: { description: 'firebaseIdToken missing, invalid, expired, or for a different phone number' },
         },
       },
     },
     '/api/users/login': {
       post: {
         tags: ['Users'],
-        summary: 'Login by phone',
+        summary: 'Login by phone (Firebase OTP verified server-side)',
         requestBody: {
           required: true,
           content: {
@@ -267,6 +287,7 @@ const swaggerDefinition = {
         responses: {
           200: { description: 'Login OK — returns user + JWT' },
           400: { description: 'Failed' },
+          401: { description: 'firebaseIdToken missing, invalid, expired, or for a different phone number' },
           403: { description: 'Account inactive' },
           404: { description: 'No account for this phone — sign up first' },
         },
@@ -283,13 +304,40 @@ const swaggerDefinition = {
           required: true,
           content: {
             'application/json': {
-              schema: { $ref: '#/components/schemas/UserLogin' },
+              schema: { $ref: '#/components/schemas/PhoneOnly' },
             },
           },
         },
         responses: {
           200: { description: '`data.exists` is true or false' },
           400: { description: 'Phone missing / lookup failed' },
+        },
+      },
+    },
+    '/api/users/check-availability': {
+      post: {
+        tags: ['Users'],
+        summary: 'Sign-up pre-check: are this phone and email already registered?',
+        description:
+          'Public. Used by sign-up *before* Firebase sends an SMS, so an existing customer can be told to sign in. ' +
+          'Send `phone`, `email` or both; a field not sent comes back `false`. Never issues a JWT.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  phone: { type: 'string', example: '+447700900123' },
+                  email: { type: 'string', example: 'ali@example.com' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: '`data: { phoneExists, emailExists }`' },
+          400: { description: 'Neither phone nor email sent / lookup failed' },
         },
       },
     },
@@ -332,9 +380,10 @@ const swaggerDefinition = {
     '/api/drivers/login': {
       post: {
         tags: ['Drivers'],
-        summary: 'Driver login by phone (OTP verified client-side; needs admin approval first)',
+        summary: 'Driver login by phone (Firebase OTP verified server-side; needs admin approval first)',
         description:
-          'Blocked drivers cannot log in. Deactivated drivers can log in but cannot go online. OTP itself is verified entirely on the Flutter client via Firebase — same as customers.',
+          'Blocked drivers cannot log in. Deactivated drivers can log in but cannot go online. The app does the ' +
+          'Firebase phone OTP and sends the resulting `firebaseIdToken`; the server checks it matches `phone`.',
         requestBody: {
           required: true,
           content: {
@@ -343,7 +392,11 @@ const swaggerDefinition = {
             },
           },
         },
-        responses: { 200: { description: 'Returns driver + JWT' } },
+        responses: {
+          200: { description: 'Returns driver + JWT' },
+          401: { description: 'firebaseIdToken missing, invalid, expired, or for a different phone number' },
+          403: { description: 'Not approved by admin yet' },
+        },
       },
     },
     '/api/drivers/{id}': {
@@ -489,10 +542,11 @@ const swaggerDefinition = {
         tags: ['Drivers'],
         summary: "I've arrived (pickup or dropoff)",
         description:
-          'Auth: **driver** (own id). Records `pickupArrivedAt` / `dropoffArrivedAt` once and sends the customer a ' +
-          'push. The order status does not change. `pickup` is accepted while the order is `confirmed`, ' +
-          '`pickupScheduled` or `outForPickup`; `dropoff` while it is `pickupCompleted` or `outForDropOff`. ' +
-          'A repeat tap returns 200 "Arrival was already recorded" with the original time and sends nothing.',
+          'Auth: **driver** (own id). Records `pickupArrivedAt` / `dropoffArrivedAt` once. Sends **no push** (the ' +
+          'customer is notified by the outForPickup / outForDropOff status change). The order status does not ' +
+          'change. `pickup` is accepted while the order is `confirmed`, `pickupScheduled` or `outForPickup`; ' +
+          '`dropoff` while it is `pickupCompleted` or `outForDropOff`. A repeat tap returns 200 "Arrival was ' +
+          'already recorded" with the original time.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },

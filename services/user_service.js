@@ -1,4 +1,5 @@
 const User = require('../models/user_model');
+const PhoneVerification = require('./phone_verification_service');
 const logger = require('../utils/logger');
 
 class UserService {
@@ -10,6 +11,7 @@ class UserService {
       if (!data.name || !data.email || !data.phone) {
         throw new Error('name, email and phone are required');
       }
+      await PhoneVerification.assertOwnsPhone(data.phone, data.firebaseIdToken);
 
       const existing = await User.findByEmailOrPhone({
         email: data.email.toLowerCase(),
@@ -31,9 +33,10 @@ class UserService {
     }
   }
 
-  async loginUser(phone) {
+  async loginUser(phone, firebaseIdToken) {
     try {
       logger.info(`[USER SVC] Login attempt phone=${phone}`);
+      await PhoneVerification.assertOwnsPhone(phone, firebaseIdToken);
 
       const user = await User.findByPhone(phone);
       if (!user) {
@@ -69,6 +72,24 @@ class UserService {
     const exists = !!user;
     logger.info(`[USER SVC] Check phone exists=${exists}`);
     return { exists };
+  }
+
+  /**
+   * Public sign-up pre-check, before Firebase sends an SMS: is this phone
+   * and/or email already on an account? A field that isn't sent is false.
+   */
+  async checkAvailability({ phone, email } = {}) {
+    const cleanEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    const cleanPhone = typeof phone === 'string' ? phone.trim() : '';
+    logger.info(`[USER SVC] Check availability phone=${cleanPhone || 'n/a'} email=${cleanEmail ? '***' : 'n/a'}`);
+
+    const [byPhone, byEmail] = await Promise.all([
+      cleanPhone ? User.findByPhone(cleanPhone) : null,
+      cleanEmail ? User.findByEmailOrPhone({ email: cleanEmail }) : null,
+    ]);
+    const result = { phoneExists: Boolean(byPhone), emailExists: Boolean(byEmail) };
+    logger.info(`[USER SVC] Check availability ${JSON.stringify(result)}`);
+    return result;
   }
 
   async getAll() {

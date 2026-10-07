@@ -36,6 +36,7 @@ const logPayload = (label, payload) => {
     if (safe.email) safe.email = '***';
     if (safe.password) safe.password = '***';
     if (safe.token) safe.token = '***';
+    if (safe.firebaseIdToken) safe.firebaseIdToken = '***';
     logger.info(`[DATA OUT] ${label}: ${JSON.stringify(safe)}`);
   } catch {
     logger.info(`[DATA OUT] ${label}: [unserializable]`);
