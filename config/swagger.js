@@ -1581,7 +1581,9 @@ const swaggerDefinition = {
           'Display the returned `amount` before opening the payment sheet — it is what will be charged, ' +
           'and it can differ from an earlier quote if items changed.\n\n' +
           'Confirm the returned `clientSecret` with Stripe on the client (Payment Element on web, ' +
-          'PaymentSheet on Flutter). Then either wait for the webhook or call ' +
+          'PaymentSheet on Flutter). The intent is limited to `card`, `klarna` and `afterpay_clearpay` ' +
+          '(Clearpay); Apple Pay / Google Pay still appear as card wallets. PayPal is not included. ' +
+          'Then either wait for the webhook or call ' +
           '`POST /api/payments/confirm` to get the order immediately.\n\n' +
           'Safe to call more than once: an in-flight PaymentIntent is reused (and re-priced if the ' +
           'booking changed) instead of creating a second chargeable intent.\n\n' +

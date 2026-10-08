@@ -24,7 +24,7 @@ const {
  *   backend  — decides the amount, creates the PaymentIntent, verifies the
  *              webhook signature, records the payment, and is the ONLY thing
  *              that turns a paid booking into an order.
- *   frontend — renders Stripe's own card UI (Payment Element on web,
+ *   frontend — renders Stripe's own UI (Payment Element on web,
  *              PaymentSheet on Flutter) using the returned client_secret.
  *
  * Card details never reach this server, and no client can decide either the
@@ -45,6 +45,23 @@ const REUSABLE_INTENT_STATUSES = [
   'processing',
 ];
 
+// Checkout only offers these. Apple Pay / Google Pay still appear as card
+// wallets. PayPal is not listed until Stripe marks it eligible. Stripe's
+// id for Clearpay in the UK is afterpay_clearpay. Must not be combined with
+// automatic_payment_methods — that would show every Enabled dashboard method.
+const PAYMENT_METHOD_TYPES = ['card', 'klarna', 'afterpay_clearpay'];
+
+const sameMethodTypes = (intent) => {
+  const got = [...(intent.payment_method_types || [])].sort();
+  const want = [...PAYMENT_METHOD_TYPES].sort();
+  return got.length === want.length && got.every((type, i) => type === want[i]);
+};
+
+const typesNamedInStripeError = (err) => {
+  const message = err?.message || '';
+  return PAYMENT_METHOD_TYPES.filter((type) => message.includes(type));
+};
+
 const badRequest = (message, statusCode = 400) => {
   const err = new Error(message);
   err.statusCode = statusCode;
@@ -59,6 +76,7 @@ class PaymentService {
       currency: CURRENCY,
       // Tells the frontend which Stripe integration to build against.
       integration: 'payment_intents',
+      paymentMethodTypes: PAYMENT_METHOD_TYPES,
     };
   }
 
@@ -140,24 +158,11 @@ class PaymentService {
       }
     }
 
-    const intent = await stripe.paymentIntents.create(
-      {
-        amount: amountMinor,
-        currency: CURRENCY,
-        // Lets Stripe decide which methods to offer (card, Apple/Google Pay)
-        // based on the dashboard settings — same call works for web and Flutter.
-        automatic_payment_methods: { enabled: true },
-        description: `YourWays booking ${bookingId}`,
-        receipt_email: booking.email || undefined,
-        metadata: {
-          bookingId: String(bookingId),
-          userId: String(booking.userId),
-          customerName: booking.fullName || '',
-        },
-      },
-      // Guards against a double-tap creating two intents for the same price.
-      { idempotencyKey: `yw-booking-${bookingId}-${amountMinor}` }
-    );
+    const intent = await this._createIntentWithMethods(stripe, {
+      amountMinor,
+      bookingId,
+      booking,
+    });
 
     logger.success(`[PAYMENT SVC] Stripe intent created ${intent.id} amount=${amountMinor} ${CURRENCY}`);
 
@@ -174,6 +179,41 @@ class PaymentService {
     });
 
     return this._intentResponse(payment, { amount, amountMinor, priceBreakdown });
+  }
+
+  /**
+   * Create a PaymentIntent with the agreed methods. If this Stripe account
+   * has not enabled one of them (typical on the test account vs live), drop
+   * only the rejected type and retry so card checkout still works.
+   */
+  async _createIntentWithMethods(stripe, { amountMinor, bookingId, booking }, types = PAYMENT_METHOD_TYPES) {
+    const params = {
+      amount: amountMinor,
+      currency: CURRENCY,
+      payment_method_types: types,
+      description: `YourWays booking ${bookingId}`,
+      receipt_email: booking.email || undefined,
+      metadata: {
+        bookingId: String(bookingId),
+        userId: String(booking.userId),
+        customerName: booking.fullName || '',
+      },
+    };
+    try {
+      return await stripe.paymentIntents.create(params, {
+        idempotencyKey: `yw-booking-${bookingId}-${amountMinor}-${types.join('-')}`,
+      });
+    } catch (err) {
+      const rejected = typesNamedInStripeError(err);
+      const remaining = types.filter((type) => !rejected.includes(type));
+      if (rejected.length && remaining.length && remaining.length < types.length) {
+        logger.warn(
+          `[PAYMENT SVC] Stripe rejected ${rejected.join(', ')} on this account — retrying with ${remaining.join(', ')}`
+        );
+        return this._createIntentWithMethods(stripe, { amountMinor, bookingId, booking }, remaining);
+      }
+      throw err;
+    }
   }
 
   /**
@@ -208,6 +248,21 @@ class PaymentService {
         status: intent.status === 'canceled' ? 'cancelled' : 'failed',
         meta: { ...payment.meta, intentStatus: intent.status },
       });
+      return null;
+    }
+
+    // Old intents used automatic_payment_methods (every Enabled type). Drop
+    // those so the next create uses only card / Klarna / Clearpay.
+    if (!sameMethodTypes(intent)) {
+      logger.info(
+        `[PAYMENT SVC] Intent ${intent.id} methods=[${(intent.payment_method_types || []).join(',')}] — replacing`
+      );
+      try {
+        await stripe.paymentIntents.cancel(intent.id);
+      } catch {
+        // Uncancellable — next create-intent still inserts a new row.
+      }
+      await Payment.updateById(payment.id, { status: 'cancelled' });
       return null;
     }
 
