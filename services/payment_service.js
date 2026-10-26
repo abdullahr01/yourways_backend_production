@@ -6,6 +6,7 @@ const OrderService = require('./order_service');
 const PricingService = require('./pricing_service');
 const RealtimeService = require('./realtime_service');
 const logger = require('../utils/logger');
+const MetaCapiService = require('./meta_capi_service');
 const { formatOrder } = require('../utils/orderFormatter');
 const {
   getStripe,
@@ -89,7 +90,7 @@ class PaymentService {
    * of creating a second intent, so a customer can never end up with two
    * chargeable intents for one booking.
    */
-  async createPaymentIntentForBooking(bookingId, authUserId) {
+  async createPaymentIntentForBooking(bookingId, authUserId, marketingContext = {}) {
     logger.info(`[PAYMENT SVC] createIntent booking=${bookingId} user=${authUserId}`);
 
     if (!bookingId) throw badRequest('bookingId is required');
@@ -149,6 +150,13 @@ class PaymentService {
     const existing = await Payment.findOpenByBookingId(bookingId);
 
     if (existing) {
+      // Replace the stored preference on every checkout visit. Missing or
+      // essential consent clears identifiers captured by an earlier request.
+      if (MetaCapiService.isEnabled()) {
+        await Payment.updateById(existing.id, {
+          metaCapiContext: MetaCapiService.captureContext(marketingContext),
+        });
+      }
       const reused = await this._reuseIntent(existing, { amount, amountMinor, booking });
       if (reused) {
         logger.success(
@@ -176,6 +184,7 @@ class PaymentService {
       currency: CURRENCY,
       status: 'pending',
       meta: { intentStatus: intent.status },
+      metaCapiContext: MetaCapiService.captureContext(marketingContext),
     });
 
     return this._intentResponse(payment, { amount, amountMinor, priceBreakdown });
@@ -347,7 +356,7 @@ class PaymentService {
    * dev) and can be delayed — the app can call this right after the payment
    * sheet closes and get its order immediately.
    */
-  async confirmPayment(paymentIntentId, authUserId) {
+  async confirmPayment(paymentIntentId, authUserId, marketingContext = null) {
     logger.info(`[PAYMENT SVC] confirm intent=${paymentIntentId} user=${authUserId}`);
     if (!paymentIntentId) throw badRequest('paymentIntentId is required');
 
@@ -357,13 +366,20 @@ class PaymentService {
       throw badRequest('You do not have permission to access this payment', 403);
     }
 
+    if (marketingContext && MetaCapiService.isEnabled()) {
+      marketingContext = MetaCapiService.captureContext(marketingContext);
+      await Payment.updateById(payment.id, { metaCapiContext: marketingContext });
+    } else {
+      marketingContext = null;
+    }
+
     const stripe = getStripe();
     const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
     logger.info(`[PAYMENT SVC] Stripe says intent ${paymentIntentId} is '${intent.status}'`);
 
     switch (intent.status) {
       case 'succeeded':
-        return this._applySucceeded(intent);
+        return this._applySucceeded(intent, null, marketingContext);
       case 'canceled':
         return this._applyCancelled(intent);
       case 'requires_payment_method':
@@ -397,7 +413,7 @@ class PaymentService {
    * /confirm for the same intent at the same time. A payment that is already
    * succeeded and already linked to an order short-circuits.
    */
-  async _applySucceeded(intent, eventId = null) {
+  async _applySucceeded(intent, eventId = null, marketingContext = null) {
     const stripe = getStripe();
 
     // Re-read with the charge expanded so we can store the receipt URL and the
@@ -440,9 +456,21 @@ class PaymentService {
     }
 
     const alreadyDone = payment.status === 'succeeded' && payment.orderId;
+    const capiContext = marketingContext || (MetaCapiService.isEnabled()
+      ? await Payment.getMetaCapiContext(payment.id)
+      : {});
     if (alreadyDone) {
       logger.info(`[PAYMENT SVC] Intent ${full.id} already fulfilled → order ${payment.orderId}`);
       const existingOrder = await Order.findById(payment.orderId);
+      const booking = await Booking.findById(payment.bookingId);
+      const queued = await MetaCapiService.enqueuePurchase(
+        full.id,
+        payment.amount,
+        payment.paidAt,
+        booking,
+        capiContext
+      );
+      if (queued) await Payment.updateById(payment.id, { metaCapiContext: {} });
       return {
         payment,
         order: existingOrder ? formatOrder(existingOrder) : null,
@@ -464,6 +492,16 @@ class PaymentService {
     });
 
     logger.success(`[PAYMENT SVC] Payment ${payment.id} SUCCEEDED £${payment.amount}`);
+
+    const bookingForCapi = await Booking.findById(payment.bookingId);
+    const capiQueued = await MetaCapiService.enqueuePurchase(
+      full.id,
+      fromMinorUnits(capturedMinor),
+      payment.paidAt,
+      bookingForCapi,
+      capiContext
+    );
+    if (capiQueued) await Payment.updateById(payment.id, { metaCapiContext: {} });
 
     await Booking.updateById(payment.bookingId, {
       paymentStatus: 'succeeded',

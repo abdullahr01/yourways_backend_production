@@ -59,6 +59,12 @@ const toDbInsert = (data) =>
     paid_at: data.paidAt ?? data.paid_at ?? null,
     refunded_at: data.refundedAt ?? data.refunded_at ?? null,
     meta: data.meta || {},
+    meta_capi_context:
+      data.metaCapiContext && Object.keys(data.metaCapiContext).length
+        ? data.metaCapiContext
+        : data.meta_capi_context && Object.keys(data.meta_capi_context).length
+          ? data.meta_capi_context
+          : undefined,
   });
 
 const toDbUpdate = (data) =>
@@ -78,11 +84,16 @@ const toDbUpdate = (data) =>
     paid_at: data.paidAt ?? data.paid_at,
     refunded_at: data.refundedAt ?? data.refunded_at,
     meta: data.meta,
+    meta_capi_context: data.metaCapiContext ?? data.meta_capi_context,
   });
 
 const create = async (data) => {
   logger.info(`[PAYMENT MODEL] INSERT → ${TABLE}`);
-  logPayload('payment.create', { ...data, clientSecret: '***' });
+  logPayload('payment.create', {
+    ...data,
+    clientSecret: '***',
+    metaCapiContext: data.metaCapiContext ? '[private context stored]' : undefined,
+  });
   const result = await supabase.from(TABLE).insert(toDbInsert(data)).select().single();
   const row = handleSupabase('payments.insert', result);
   logger.success(`[PAYMENT MODEL] Created payment id=${row.id} status=${row.status}`);
@@ -153,11 +164,24 @@ const findOpenByBookingId = async (bookingId) => {
 
 const updateById = async (id, data) => {
   logger.info(`[PAYMENT MODEL] UPDATE id=${id}`);
-  logPayload('payment.update', data);
+  logPayload('payment.update', {
+    ...data,
+    metaCapiContext: data.metaCapiContext ? '[private context stored]' : undefined,
+  });
   const result = await supabase.from(TABLE).update(toDbUpdate(data)).eq('id', id).select().single();
   const row = handleSupabase('payments.update', result);
   logger.info(`[PAYMENT MODEL] Updated payment id=${row.id} status=${row.status}`);
   return mapPayment(row);
+};
+
+const getMetaCapiContext = async (id) => {
+  const result = await supabase
+    .from(TABLE)
+    .select('meta_capi_context')
+    .eq('id', id)
+    .maybeSingle();
+  const row = handleSupabase('payments.getMetaCapiContext', result, { allowNull: true });
+  return row?.meta_capi_context || {};
 };
 
 module.exports = {
@@ -171,4 +195,5 @@ module.exports = {
   findSucceededByBookingId,
   findOpenByBookingId,
   updateById,
+  getMetaCapiContext,
 };

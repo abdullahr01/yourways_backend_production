@@ -4,6 +4,7 @@ require('./config/database');
 const { isConfigured: isFirebaseConfigured } = require('./config/firebase');
 const logger = require('./utils/logger');
 const RevokedToken = require('./models/revoked_token_model');
+const MetaCapiService = require('./services/meta_capi_service');
 
 const PORT = process.env.PORT || 5000;
 
@@ -40,6 +41,7 @@ app.listen(PORT, () => {
   logger.info(
     `[MAIN] Push notifications: FCM ${isFirebaseConfigured() ? 'enabled' : 'DISABLED (FIREBASE_SERVICE_ACCOUNT missing or invalid)'}`
   );
+  logger.info(`[MAIN] Meta CAPI: ${MetaCapiService.isEnabled() ? 'enabled' : 'disabled'}`);
   if (isFirebaseConfigured()) {
     logger.info('[MAIN] Customer/driver login: Firebase phone verification required (firebaseIdToken)');
   } else {
@@ -52,4 +54,13 @@ app.listen(PORT, () => {
   RevokedToken.cleanupExpired().catch((err) =>
     logger.warn(`[MAIN] Startup revoked-token cleanup skipped: ${err.message}`)
   );
+  MetaCapiService.dispatchDue().catch((err) =>
+    logger.warn(`[MAIN] Meta CAPI queue startup skipped: ${err.code || 'queue_error'}`)
+  );
+  const metaCapiQueueTimer = setInterval(() => {
+    MetaCapiService.dispatchDue().catch((err) =>
+      logger.warn(`[MAIN] Meta CAPI queue pass skipped: ${err.code || 'queue_error'}`)
+    );
+  }, 30_000);
+  metaCapiQueueTimer.unref();
 });
