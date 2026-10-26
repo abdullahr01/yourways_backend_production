@@ -2,6 +2,7 @@ const PaymentService = require('../services/payment_service');
 const { successResponse, errorResponse } = require('../utils/responseHandler');
 const { getStripe, isConfigured, WEBHOOK_SECRET } = require('../config/stripe');
 const logger = require('../utils/logger');
+const marketingContextFromRequest = require('../utils/marketingContext');
 
 class PaymentController {
   /**
@@ -32,7 +33,11 @@ class PaymentController {
       const authUserId = req.auth?.id || req.auth?._id;
       logger.info(`[PAYMENT CTRL] bookingId=${bookingId} user=${authUserId}`);
 
-      const result = await PaymentService.createPaymentIntentForBooking(bookingId, authUserId);
+      const result = await PaymentService.createPaymentIntentForBooking(
+        bookingId,
+        authUserId,
+        marketingContextFromRequest(req)
+      );
 
       logger.success(
         `[PAYMENT CTRL] Intent ready ${result.paymentIntentId} £${result.amount}`
@@ -76,7 +81,11 @@ class PaymentController {
       const authUserId = req.auth?.id || req.auth?._id;
       logger.info(`[PAYMENT CTRL] paymentIntentId=${paymentIntentId} user=${authUserId}`);
 
-      const result = await PaymentService.confirmPayment(paymentIntentId, authUserId);
+      const result = await PaymentService.confirmPayment(
+        paymentIntentId,
+        authUserId,
+        marketingContextFromRequest(req)
+      );
 
       logger.success(
         `[PAYMENT CTRL] Confirmed status=${result.paymentStatus} order=${result.order?.orderId || 'none'}`

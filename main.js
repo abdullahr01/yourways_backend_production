@@ -3,6 +3,7 @@ const app = require('./app');
 require('./config/database');
 const logger = require('./utils/logger');
 const RevokedToken = require('./models/revoked_token_model');
+const MetaCapiService = require('./services/meta_capi_service');
 
 const PORT = process.env.PORT || 5000;
 
@@ -36,6 +37,7 @@ app.listen(PORT, () => {
     `[MAIN] Payments: Stripe ${process.env.STRIPE_SECRET_KEY ? 'enabled' : 'DISABLED (no key)'} — bookings must be paid before becoming orders`
   );
   logger.info('[MAIN] Realtime: Supabase Broadcast (driver-<id>, order-<id> channels)');
+  logger.info(`[MAIN] Meta CAPI: ${MetaCapiService.isEnabled() ? 'enabled' : 'disabled'}`);
   logger.info('[MAIN] Ready to accept requests');
 
   // House-keeping: drop revoked-token rows that are already past their
@@ -43,4 +45,13 @@ app.listen(PORT, () => {
   RevokedToken.cleanupExpired().catch((err) =>
     logger.warn(`[MAIN] Startup revoked-token cleanup skipped: ${err.message}`)
   );
+  MetaCapiService.dispatchDue().catch((err) =>
+    logger.warn(`[MAIN] Meta CAPI queue startup skipped: ${err.code || 'queue_error'}`)
+  );
+  const metaCapiQueueTimer = setInterval(() => {
+    MetaCapiService.dispatchDue().catch((err) =>
+      logger.warn(`[MAIN] Meta CAPI queue pass skipped: ${err.code || 'queue_error'}`)
+    );
+  }, 30_000);
+  metaCapiQueueTimer.unref();
 });

@@ -1,6 +1,7 @@
 const BookingService = require('../services/booking_service');
 const { successResponse, errorResponse } = require('../utils/responseHandler');
 const logger = require('../utils/logger');
+const marketingContextFromRequest = require('../utils/marketingContext');
 
 class BookingController {
   /**
@@ -17,7 +18,7 @@ class BookingController {
         userAgent: req.get('User-Agent')
       };
       
-      const booking = await BookingService.createBooking(req.body);
+      const booking = await BookingService.createBooking(req.body, marketingContextFromRequest(req));
       
       logger.success(`✅ Booking created: ${booking.id}`);
       logger.info(`[BOOKING CTRL] status=${booking.status} items=${booking.totalItems}`);

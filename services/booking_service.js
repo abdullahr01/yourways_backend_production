@@ -10,6 +10,7 @@ const MapsService = require('./maps_service');
 // immediately convert the freshly-submitted booking into an order.
 const OrderService = require('./order_service');
 const logger = require('../utils/logger');
+const MetaCapiService = require('./meta_capi_service');
 
 /**
  * Fields a customer may never set on PUT /api/bookings/:id. The price and the
@@ -36,7 +37,7 @@ const PROTECTED_BOOKING_FIELDS = [
 ];
 
 class BookingService {
-  async createBooking(bookingData) {
+  async createBooking(bookingData, marketingContext = {}) {
     try {
       logger.info('[BOOKING SVC] Creating draft booking...');
       logger.info(
@@ -110,6 +111,7 @@ class BookingService {
       });
 
       logger.success(`[BOOKING SVC] Created id=${booking.id} items=${booking.totalItems}`);
+      await MetaCapiService.enqueueLead(booking, marketingContext);
       return booking;
     } catch (err) {
       logger.error(`[BOOKING SVC] create failed: ${err.message}`);

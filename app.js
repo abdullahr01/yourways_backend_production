@@ -21,6 +21,10 @@ const signStorageUrls = require('./middleware/signStorageUrls');
 
 const app = express();
 
+// Railway terminates TLS before the Express process. Trust its nearest proxy
+// so req.ip reflects the browser address used for server-side event matching.
+app.set('trust proxy', 1);
+
 const allowedOrigins = [
     'http://localhost:53485',
     'http://localhost:5000',
@@ -46,7 +50,13 @@ app.use(cors({
         }
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Marketing-Consent',
+      'X-Fbp',
+      'X-Fbc',
+    ],
 }));
 // Stripe webhook FIRST: its signature is computed over the raw request bytes,
 // which bodyParser.json() below would destroy. Everything after this line
